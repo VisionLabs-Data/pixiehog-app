@@ -4,7 +4,7 @@ import PostHog from 'posthog-js-lite'
 export class PixieHogPostHog extends PostHog {
 
   getLibraryId(): string {
-    return 'pixiehog';
+    return 'vizhog';
   }
   getLibraryVersion(): string {
     return '1.0.6';
