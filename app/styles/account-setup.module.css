@@ -1,0 +1,546 @@
+/* Account Setup — Reimagined Layout */
+
+.pageWrapper {
+  max-width: 100%;
+  padding: 0;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 40px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.headerTitle {
+  font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, sans-serif;
+  font-size: 28px;
+  font-weight: 500;
+  color: #0d0d0d;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.headerDesc {
+  font-size: 14px;
+  color: #7a7a7a;
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.dashboardBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0d0d0d;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dashboardBtn:hover {
+  background: #fafafa;
+}
+
+.dashboardBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  background: #008060;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.saveBtn:hover {
+  background: #006e52;
+}
+
+.saveBtn:disabled {
+  background: #8ac4ad;
+  cursor: not-allowed;
+}
+
+/* ── Body ── */
+.body {
+  display: flex;
+  gap: 32px;
+  padding: 40px;
+  min-height: calc(100vh - 80px);
+  align-items: flex-start;
+}
+
+/* ── Left Column — Setup Form ── */
+.setupForm {
+  flex: 1;
+  min-width: 0;
+}
+
+.setupCard {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepBadge {
+  width: 28px;
+  height: 28px;
+  background: #008060;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.stepTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0d0d0d;
+  margin: 0;
+}
+
+.stepDesc {
+  font-size: 14px;
+  color: #7a7a7a;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Form Fields ── */
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: #0d0d0d;
+  margin: 0;
+}
+
+.fieldHelp {
+  font-size: 13px;
+  color: #008060;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fieldHelp:hover {
+  text-decoration: underline;
+}
+
+.fieldInput {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0d0d0d;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fieldInput:focus-within {
+  border-color: #008060;
+}
+
+.fieldInput input {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #0d0d0d;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+}
+
+.fieldInput select {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #0d0d0d;
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.selectWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.selectWrapper::after {
+  content: '';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid #7a7a7a;
+  pointer-events: none;
+}
+
+.selectWrapper select {
+  padding: 12px 14px;
+  padding-right: 36px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0d0d0d;
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.selectWrapper select:focus {
+  border-color: #008060;
+}
+
+.fieldHint {
+  font-size: 12px;
+  color: #7a7a7a;
+  margin: 0;
+}
+
+.fieldError {
+  font-size: 12px;
+  color: #d72c0d;
+  margin: 0;
+}
+
+/* ── Warning Banner ── */
+.warningBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fff8f0;
+  border: 1px solid #f5d0a9;
+  border-radius: 8px;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: #d97706;
+}
+
+.warningText {
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.4;
+}
+
+.warningText a {
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* ── Right Column — Connection Status ── */
+.rightColumn {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0d0d0d;
+  margin: 0;
+}
+
+/* ── Status Card ── */
+.statusCard {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.statusCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.statusCardLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.statusIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.statusIconGreen {
+  background: #f0fdf4;
+  color: #22c55e;
+}
+
+.statusIconGray {
+  background: #f5f5f5;
+  color: #7a7a7a;
+}
+
+.statusCardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0d0d0d;
+  margin: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badgeConnected {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.badgeDisconnected {
+  background: #f5f5f5;
+  color: #7a7a7a;
+}
+
+.badgeWarning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.badgeDotGreen {
+  background: #22c55e;
+}
+
+.badgeDotGray {
+  background: #9ca3af;
+}
+
+.badgeDotYellow {
+  background: #d97706;
+}
+
+.statusCardActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.configureLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #008060;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.configureLink:hover {
+  text-decoration: underline;
+}
+
+.configureLink svg {
+  width: 14px;
+  height: 14px;
+}
+
+.turnOffBtn {
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #7a7a7a;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.turnOffBtn:hover {
+  background: #fafafa;
+}
+
+/* ── Requirements Banner (inside status cards) ── */
+.requirementsBanner {
+  background: #fef3c7;
+  border: 1px solid #f5d0a9;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.requirementsList {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.requirementsList li {
+  margin-bottom: 2px;
+}
+
+.requirementsList a {
+  color: #008060;
+  text-decoration: underline;
+}
+
+/* ── Tips Card ── */
+.tipsCard {
+  background: #f8f9ff;
+  border: 1px solid #e0e4f5;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tipsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tipsIcon {
+  color: #6366f1;
+}
+
+.tipsTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0d0d0d;
+  margin: 0;
+}
+
+.tipItem {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.tipBullet {
+  color: #6366f1;
+  font-size: 13px;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.tipText {
+  font-size: 12px;
+  color: #7a7a7a;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .body {
+    flex-direction: column;
+    padding: 24px 16px;
+  }
+
+  .rightColumn {
+    width: 100%;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 16px;
+  }
+}

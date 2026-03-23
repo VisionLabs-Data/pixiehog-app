@@ -1,21 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Page,
-  Layout,
-  BlockStack,
-  Card,
-  TextField,
-  Text,
-  Link,
-  Select,
-  Box,
-  Banner,
-  type SelectOption,
-  InlineStack,
-  Button,
-} from '@shopify/polaris';
+import type { SelectOption } from '@shopify/polaris';
 import type { ClientActionFunctionArgs, ClientLoaderFunctionArgs} from '@remix-run/react';
-import { useFetcher, useLoaderData } from '@remix-run/react';
+import { useFetcher, useLoaderData, Link as RemixLink } from '@remix-run/react';
 import { Constant } from '../../common/constant/index';
 import { metafieldsSet as clientMetafieldsSet } from '../common.client/mutations/metafields-set';
 import { metafieldsDelete as clientMetafieldsDelete } from '../common.client/mutations/metafields-delete';
@@ -26,7 +12,6 @@ import type { WebPixelFeatureToggle } from '../../common/dto/web-pixel-feature-t
 import type { JsWebPosthogFeatureToggle } from '../../common/dto/js-web-feature-toggle.dto';
 import { JsWebPosthogFeatureToggleSchema } from '../../common/dto/js-web-feature-toggle.dto';
 import { recalculateWebPixel as clientRecalculateWebPixel } from '../common.client/procedures/recalculate-web-pixel';
-import FeatureStatusManager from 'common/components/FeatureStatusManager';
 import type { WebPixelEventsSettings } from 'common/dto/web-pixel-events-settings.dto';
 import type { WebPixelSettingChoice } from './app.web-pixel-settings/interface/setting-row.interface';
 import { defaultWebPixelSettings } from './app.web-pixel-settings/default-web-pixel-settings';
@@ -36,8 +21,10 @@ import { urlWithShopParam } from '../../common/utils';
 import type { DataCollectionStrategy} from 'common/dto/data-collection-stratergy';
 import { DataCollectionStrategySchema} from 'common/dto/data-collection-stratergy';
 import { queryCurrentAppInstallation as clientQueryCurrentAppInstallation } from '../common.client/queries/current-app-installation';
-import { appEmbedStatus as clientAppEmbedStatus  } from '../common.client/procedures/app-embed-status'; 
+import { appEmbedStatus as clientAppEmbedStatus  } from '../common.client/procedures/app-embed-status';
 import LoadingSpinner from '../../common/components/LoadingSpinner';
+import styles from '../styles/account-setup.module.css';
+
 type StrictOptions = Extract<SelectOption, {label: string}>
 
 const apiHostOptions: StrictOptions[] = [
@@ -51,8 +38,6 @@ const apiHostOptions: StrictOptions[] = [
 export const clientLoader = async ({
   request,
 }: ClientLoaderFunctionArgs) => {
-  // call the server loader
-  //const serverData = await serverLoader();
   const response = await clientQueryCurrentAppInstallation();
   const currentPosthogJsWebAppEmbedStatus = await clientAppEmbedStatus(window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID)
   const payload = {
@@ -91,7 +76,7 @@ export const clientAction = async ({
     const message = dtoResultDataCollectionStrategy.error.flatten().fieldErrors.data_collection_strategy?.join(' - ');
     return { ok: false, message: message };
   }
-  
+
   const dtoResultWebPixelFeatureToggle = WebPixelFeatureToggleSchema.safeParse({ web_pixel_feature_toggle: payload.web_pixel_feature_toggle } as WebPixelFeatureToggle);
   if (!dtoResultWebPixelFeatureToggle.success) {
     const message = dtoResultWebPixelFeatureToggle.error.flatten().fieldErrors.web_pixel_feature_toggle?.join(' - ');
@@ -165,7 +150,7 @@ export const clientAction = async ({
     })
   }
   await clientMetafieldsSet(metafieldsSetData);
-  
+
 
   const responseRecalculate = await clientRecalculateWebPixel();
   const message = (() => {
@@ -184,6 +169,162 @@ export function HydrateFallback() {
   return <LoadingSpinner />
 }
 
+/* ── Inline SVG Icons ── */
+
+function ExternalLinkIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+function ZapIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
+}
+
+function CodeIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </svg>
+  );
+}
+
+function SettingsIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function AlertTriangleIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function LightbulbIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+    </svg>
+  );
+}
+
+/* ── Status Badge Component ── */
+
+interface StatusBadgeProps {
+  featureEnabled: boolean;
+  dirty: boolean;
+  hasActionRequired: boolean;
+}
+
+function StatusBadge({ featureEnabled, dirty, hasActionRequired }: StatusBadgeProps) {
+  if (!featureEnabled) {
+    return (
+      <span className={`${styles.badge} ${styles.badgeDisconnected}`}>
+        <span className={`${styles.badgeDot} ${styles.badgeDotGray}`} />
+        Disconnected
+      </span>
+    );
+  }
+  if (hasActionRequired) {
+    return (
+      <span className={`${styles.badge} ${styles.badgeWarning}`}>
+        <span className={`${styles.badgeDot} ${styles.badgeDotYellow}`} />
+        Action required
+      </span>
+    );
+  }
+  return (
+    <span className={`${styles.badge} ${styles.badgeConnected}`}>
+      <span className={`${styles.badgeDot} ${styles.badgeDotGreen}`} />
+      {dirty ? 'Unsaved' : 'Connected'}
+    </span>
+  );
+}
+
+/* ── Status Card Component ── */
+
+interface StatusCardProps {
+  title: string;
+  icon: React.ReactNode;
+  featureEnabled: boolean;
+  dirty: boolean;
+  hasActionRequired: boolean;
+  requirements?: { trigger: boolean; message: React.ReactNode }[];
+  configureUrl: string;
+  configureLabel: string;
+  onToggle: () => void;
+}
+
+function StatusCard({
+  title,
+  icon,
+  featureEnabled,
+  dirty,
+  hasActionRequired,
+  requirements,
+  configureUrl,
+  configureLabel,
+  onToggle,
+}: StatusCardProps) {
+  const activeRequirements = requirements?.filter(r => r.trigger) ?? [];
+
+  return (
+    <div className={styles.statusCard}>
+      <div className={styles.statusCardHeader}>
+        <div className={styles.statusCardLeft}>
+          <div className={`${styles.statusIcon} ${featureEnabled && !hasActionRequired ? styles.statusIconGreen : styles.statusIconGray}`}>
+            {icon}
+          </div>
+          <p className={styles.statusCardTitle}>{title}</p>
+        </div>
+        <StatusBadge featureEnabled={featureEnabled} dirty={dirty} hasActionRequired={hasActionRequired} />
+      </div>
+
+      {featureEnabled && activeRequirements.length > 0 && (
+        <div className={styles.requirementsBanner}>
+          <strong>Requirements:</strong>
+          <ul className={styles.requirementsList}>
+            {activeRequirements.map((req, i) => (
+              <li key={i}>{req.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className={styles.statusCardActions}>
+        <RemixLink to={configureUrl} className={styles.configureLink}>
+          <SettingsIcon />
+          {configureLabel}
+        </RemixLink>
+        <button className={styles.turnOffBtn} onClick={onToggle}>
+          {featureEnabled ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Page Component ── */
+
 export default function Index() {
   const {
     currentAppInstallation,
@@ -196,7 +337,7 @@ export default function Index() {
   const fetcher = useFetcher();
   const PosthogApiKeyInitialState = currentAppInstallation.posthog_api_key?.value || '';
   const [PostHogApiKey, setPostHogApiKey] = useState(PosthogApiKeyInitialState);
-  const handleApiKeyChange = useCallback((newValue: string) => setPostHogApiKey(newValue), []);
+  const handleApiKeyChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setPostHogApiKey(e.target.value), []);
 
   const PosthogApiHostInitialState = currentAppInstallation.posthog_api_host?.value || '';
   const isPosthogApiHostInitialStateCustom = PosthogApiHostInitialState == '' ? false : !apiHostOptions.some((option) => option.value == PosthogApiHostInitialState)
@@ -206,27 +347,27 @@ export default function Index() {
   const [posthogCustomApiHostError, setCustomPosthogApiHostError] = useState<string>('');
   // api host
   const handlePosthogApiHostChange = useCallback(
-    (value: string) => {
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
       setPosthogApiHostError('')
-      setPosthogApiHost(value)
+      setPosthogApiHost(e.target.value)
     },
     [],
   );
   const [posthogApiHostCustom, setPosthogApiHostCustom] = useState(isPosthogApiHostInitialStateCustom ? PosthogApiHostInitialState : '' );
   const handlePosthogApiHostCustomChange = useCallback(
-    (value: string) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       setCustomPosthogApiHostError('')
-      setPosthogApiHostCustom(value)
+      setPosthogApiHostCustom(e.target.value)
     },
     [],
   );
 
-  //data collection strategry
+  //data collection strategy
   type ValueOf<T> = T[keyof T];
   const DataCollectionStrategyInitialState: ValueOf<DataCollectionStrategy> = currentAppInstallation.data_collection_strategy?.value as ValueOf<DataCollectionStrategy> || 'anonymized';
   const [dataCollectionStrategy, setDataCollectionStrategy] = useState(DataCollectionStrategyInitialState);
   const handleDataCollectionStrategyChange = useCallback(
-    (value: ValueOf<DataCollectionStrategy>) => setDataCollectionStrategy(value),
+    (e: React.ChangeEvent<HTMLSelectElement>) => setDataCollectionStrategy(e.target.value as ValueOf<DataCollectionStrategy>),
     [],
   );
 
@@ -254,7 +395,7 @@ export default function Index() {
 
 
   // web pixels
-  
+
   const webPixelSettingsMetafieldValue = currentAppInstallation?.web_pixel_settings?.jsonValue as
   | undefined
   | null
@@ -380,7 +521,7 @@ export default function Index() {
     if (posthogApiHost == 'https://us.i.posthog.com') {
       return 'https://us.posthog.com';
     }
-    
+
     if (posthogApiHost == 'https://eu.i.posthog.com') {
       return 'https://eu.posthog.com';
     }
@@ -390,177 +531,249 @@ export default function Index() {
     posthogApiHost
   ]);
 
+  const hasApiKey = PosthogApiKeyInitialState !== '' && !!PosthogApiKeyInitialState;
+
+  // Determine action-required states for status cards
+  const webPixelHasActionRequired = webPixelFeatureEnabled && (!PostHogApiKey || !posthogApiHost || allEventsDisabled);
+  const jsWebHasActionRequired = jsWebPosthogFeatureEnabled && (!PostHogApiKey || !posthogApiHost || !jsWebPosthogAppEmbedStatus);
 
   return (
-      <Page
-        title="Account setup"
-        primaryAction={{
-          onAction: submitSettings,
-          content: 'Save',
-        loading: fetcher.state == 'loading',
-        disabled: fetcher.state != 'idle' || !dirty,
-        }}
-      >
-        <BlockStack gap="500">
-          <Layout>
-            <Layout.Section>
-              <BlockStack gap="500">
-                <Card>
-                  <BlockStack gap="500">
-                  <InlineStack  align='space-between'>
-                    <Text 
-                      variant='headingLg'
-                      as='h3'
-                    >
-                    Start here
-                    </Text>
-                    <Button variant='primary' url={posthogDashboardUrl} target='_blank'>My Posthog Dashboard</Button>
-                  </InlineStack>
-                    <Text 
-                      variant='bodyLg'
-                      as='p'>This is all you need to be fully integrated with Posthog</Text>
-                    <TextField
-                      label="PostHog Project API Key"
-                      error={posthogApiKeyError}
-                      labelAction= {{content: 'Where is my API key ?', url: urlWithShopParam(`https://pxhog.com/docs/getting-started#3-project-api-key-setup`, shop), target:'_blank'}}
-                      inputMode='text'
-                      value={PostHogApiKey}
-                      onChange={handleApiKeyChange}
-                      autoComplete="off"
-                      placeholder="phc_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                    /> 
-                  
-                  <Select
-                    label="API Host"
-                    error={posthogApiHostError}
-                    labelAction= {{content: 'What is this ?', url:urlWithShopParam(`https://pxhog.com/faqs/what-is-posthog-api-host`, shop), target:'_blank'}}
-                    options={apiHostOptions}
-                    onChange={handlePosthogApiHostChange}
-                    value={posthogApiHost}
-                    helpText= "We recommend using a Reverse Proxy for optimal data collection."
-                  />
-                  {posthogApiHost == "custom" && (
-                    <TextField
-                    label="Custom Reverse Proxy"
-                    error={posthogCustomApiHostError}
-                    labelAction= {{content: 'What is this , and how do I configure it ?', url:urlWithShopParam(`https://pxhog.com/faqs/what-is-custom-reverse-proxy`, shop), target:'_blank'}}
-                    inputMode='url'
-                    type='url'
-                    placeholder='https://example.com'
-                    autoComplete='false'
-                    onChange={handlePosthogApiHostCustomChange}
-                    value={posthogApiHostCustom}
-                  />
-                  )}
+    <div className={styles.pageWrapper}>
+      {/* ── Header ── */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h1 className={styles.headerTitle}>Account Setup</h1>
+          <p className={styles.headerDesc}>Connect your PostHog instance to start collecting data</p>
+        </div>
+        <div className={styles.headerActions}>
+          <a href={posthogDashboardUrl} target="_blank" rel="noopener noreferrer" className={styles.dashboardBtn}>
+            <ExternalLinkIcon />
+            My PostHog Dashboard
+          </a>
+          <button
+            className={styles.saveBtn}
+            onClick={submitSettings}
+            disabled={fetcher.state !== 'idle' || !dirty}
+          >
+            {fetcher.state === 'loading' ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
 
-                  <Select
-                    label="Data Collection Strategy"
-                    labelAction= {{content: 'What is this ?', url:urlWithShopParam(`https://pxhog.com/docs/data-collection-strategies`, shop), target:'_blank'}}
-                    options={[
-                      { label: "Anonymized", value:"anonymized"},
-                      { label: "Identified By Consent", value:"non-anonymized-by-consent"},
-                      { label: "Identified", value:"non-anonymized"},
-                    ]}
-                    onChange={handleDataCollectionStrategyChange}
-                    value={dataCollectionStrategy}
-                    helpText= {<p>We recommend using <strong>Anonymized</strong> or <strong>Identified By Consent</strong> data collection strategy to help with GDPR compliance.</p>}
+      {/* ── Body ── */}
+      <div className={styles.body}>
+        {/* ── Left Column: Setup Form ── */}
+        <div className={styles.setupForm}>
+          <div className={styles.setupCard}>
+            {/* Card header with step badge */}
+            <div className={styles.cardHeader}>
+              <div className={styles.stepBadge}>1</div>
+              <h2 className={styles.stepTitle}>Connect PostHog</h2>
+            </div>
+
+            <p className={styles.stepDesc}>
+              Enter your PostHog credentials to start collecting analytics data from your Shopify store.
+            </p>
+
+            {/* PostHog Project API Key */}
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldLabelRow}>
+                <label className={styles.fieldLabel}>PostHog Project API Key</label>
+                <a
+                  href={urlWithShopParam('https://pxhog.com/docs/getting-started#3-project-api-key-setup', shop)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.fieldHelp}
+                >
+                  Where is my API key?
+                </a>
+              </div>
+              <div className={styles.fieldInput}>
+                <input
+                  type="text"
+                  value={PostHogApiKey}
+                  onChange={handleApiKeyChange}
+                  placeholder="phc_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                  autoComplete="off"
+                />
+              </div>
+              {posthogApiKeyError && <p className={styles.fieldError}>{posthogApiKeyError}</p>}
+            </div>
+
+            {/* API Host */}
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldLabelRow}>
+                <label className={styles.fieldLabel}>API Host</label>
+                <a
+                  href={urlWithShopParam('https://pxhog.com/faqs/what-is-posthog-api-host', shop)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.fieldHelp}
+                >
+                  What is this?
+                </a>
+              </div>
+              <div className={styles.selectWrapper}>
+                <select value={posthogApiHost} onChange={handlePosthogApiHostChange}>
+                  {apiHostOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {posthogApiHostError && <p className={styles.fieldError}>{posthogApiHostError}</p>}
+              <p className={styles.fieldHint}>We recommend using a Reverse Proxy for optimal data collection.</p>
+            </div>
+
+            {/* Custom Reverse Proxy (conditional) */}
+            {posthogApiHost === 'custom' && (
+              <div className={styles.fieldGroup}>
+                <div className={styles.fieldLabelRow}>
+                  <label className={styles.fieldLabel}>Custom Reverse Proxy</label>
+                  <a
+                    href={urlWithShopParam('https://pxhog.com/faqs/what-is-custom-reverse-proxy', shop)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.fieldHelp}
+                  >
+                    What is this, and how do I configure it?
+                  </a>
+                </div>
+                <div className={styles.fieldInput}>
+                  <input
+                    type="url"
+                    value={posthogApiHostCustom}
+                    onChange={handlePosthogApiHostCustomChange}
+                    placeholder="https://example.com"
+                    autoComplete="off"
                   />
-                  {
-                    dataCollectionStrategy === 'non-anonymized' && 
-                    (
-                      <Banner tone="warning" >This option <strong>bypasses customer privacy preferences</strong>. <Link url={urlWithShopParam(`https://pxhog.com/docs/data-collection-strategies#3-identified`, shop)} target='_blank'>Read more.</Link></Banner>
-                    )
-                  }
-                  
-                  </BlockStack>
-                </Card>
-                {PosthogApiKeyInitialState !="" && PosthogApiKeyInitialState && 
-                (
-                  <Card>
-                    <BlockStack gap="500">
-                    <Text as='h3' variant='headingMd'>Web Pixels Events</Text>
-                      <FeatureStatusManager
-                        featureEnabled={webPixelFeatureEnabled}
-                        handleFeatureEnabledToggle={handleWebPixelFeatureEnabledToggle}
-                        dirty= {webPixelFeatureToggleInitialState != webPixelFeatureEnabled || !!PostHogApiKey != !!PosthogApiKeyInitialState}
-                        bannerTitle='The following requirements need to be meet to finalize the Web Pixel setup:'
-                        bannerTone='warning'
-                        customActions={[
-                          {
-                            trigger : !PostHogApiKey,
-                            badgeText:"Action required",
-                            badgeTone: "critical",
-                            badgeToneOnDirty: "attention",
-                            bannerMessage: "Setup Posthog project API key."
-                          },
-                          {
-                            trigger : !posthogApiHost,
-                            badgeText:"Action required",
-                            badgeTone: "critical",
-                            badgeToneOnDirty: "attention",
-                            bannerMessage: "Setup Posthog API Host."
-                          },
-                          {
-                            trigger : allEventsDisabled,
-                            badgeText:"Action required",
-                            badgeTone: "critical",
-                            badgeToneOnDirty: "attention",
-                            bannerMessage: <div>Select at least 1 event from the list below. <Link url="/app/web-pixel-settings"> Here </Link></div>
-                          }
-                      ]}
-                      />
-                      <Link url='/app/web-pixel-settings'>Configure Web Pixel Settings</Link>
-                    </BlockStack>
-                  </Card>
-                )}
-                {PosthogApiKeyInitialState !="" && PosthogApiKeyInitialState && 
-                (
-                  <Card>
-                    <BlockStack gap="500">
-                      <Text as='h3' variant='headingMd'>Javascript Web Config</Text>
-                      <FeatureStatusManager
-                        featureEnabled={jsWebPosthogFeatureEnabled}
-                        handleFeatureEnabledToggle={handleJsWebPosthogFeatureEnabledToggle}
-                        dirty= {jsWebPosthogFeatureEnabledInitialState != jsWebPosthogFeatureEnabled || !!PostHogApiKey != !!PosthogApiKeyInitialState}
-                        bannerTitle='The following requirements need to be meet to finalize the Javascript Web setup:'
-                        bannerTone='warning'
-                        customActions={[
-                          {
-                            trigger : !PostHogApiKey,
-                            badgeText:"Action required",
-                            badgeTone: "critical",
-                            badgeToneOnDirty: "attention",
-                            bannerMessage: "Setup Posthog project API key."
-                          },
-                          {
-                            trigger : !posthogApiHost,
-                            badgeText:"Action required",
-                            badgeTone: "critical",
-                            badgeToneOnDirty: "attention",
-                            bannerMessage: "Setup Posthog API Host."
-                          },
-                          {
-                            trigger: !jsWebPosthogAppEmbedStatus,
-                            badgeText: 'Action required',
-                            badgeTone: 'critical',
-                            badgeToneOnDirty: 'attention',
-                            bannerMessage: (
-                              <div>
-                                Toggle Posthog JS web app embed on. <Link target='_top' url={`https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${jsWebPosthogAppEmbedUuid}/${jsWebPosthogAppEmbedHandle}`}>Click Here</Link>. ensure changes are saved.
-                              </div>
-                            ),
-                          },
-                        ]}
-                      />
-                      <Link url='/app/js-web-posthog-settings'>Configure JS Web Posthog Settings</Link>
-                    </BlockStack>
-                  </Card>
-                )}
-              </BlockStack>
-            </Layout.Section>
-          </Layout>
-        </BlockStack>
-        <Box paddingBlockEnd={'800'}></Box>
-      </Page>
+                </div>
+                {posthogCustomApiHostError && <p className={styles.fieldError}>{posthogCustomApiHostError}</p>}
+              </div>
+            )}
+
+            {/* Data Collection Strategy */}
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldLabelRow}>
+                <label className={styles.fieldLabel}>Data Collection Strategy</label>
+                <a
+                  href={urlWithShopParam('https://pxhog.com/docs/data-collection-strategies', shop)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.fieldHelp}
+                >
+                  What is this?
+                </a>
+              </div>
+              <div className={styles.selectWrapper}>
+                <select value={dataCollectionStrategy} onChange={handleDataCollectionStrategyChange}>
+                  <option value="anonymized">Anonymized</option>
+                  <option value="non-anonymized-by-consent">Identified By Consent</option>
+                  <option value="non-anonymized">Identified</option>
+                </select>
+              </div>
+              <p className={styles.fieldHint}>
+                We recommend <strong>Anonymized</strong> or <strong>Identified By Consent</strong> for GDPR compliance.
+              </p>
+            </div>
+
+            {/* Warning Banner */}
+            {dataCollectionStrategy === 'non-anonymized' && (
+              <div className={styles.warningBanner}>
+                <span className={styles.warningIcon}>
+                  <AlertTriangleIcon />
+                </span>
+                <span className={styles.warningText}>
+                  This option <strong>bypasses customer privacy preferences</strong>.{' '}
+                  <a href={urlWithShopParam('https://pxhog.com/docs/data-collection-strategies#3-identified', shop)} target="_blank" rel="noopener noreferrer">
+                    Read more.
+                  </a>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right Column: Connection Status ── */}
+        <div className={styles.rightColumn}>
+          <h3 className={styles.sectionTitle}>Connection Status</h3>
+
+          {/* Web Pixels Status Card */}
+          {hasApiKey && (
+            <StatusCard
+              title="Web Pixels"
+              icon={<ZapIcon />}
+              featureEnabled={webPixelFeatureEnabled}
+              dirty={webPixelFeatureToggleInitialState !== webPixelFeatureEnabled || !!PostHogApiKey !== !!PosthogApiKeyInitialState}
+              hasActionRequired={webPixelHasActionRequired}
+              requirements={[
+                { trigger: !PostHogApiKey, message: 'Setup PostHog project API key.' },
+                { trigger: !posthogApiHost, message: 'Setup PostHog API Host.' },
+                {
+                  trigger: allEventsDisabled,
+                  message: (
+                    <>Select at least 1 event. <RemixLink to="/app/web-pixel-settings">Configure events</RemixLink></>
+                  ),
+                },
+              ]}
+              configureUrl="/app/web-pixel-settings"
+              configureLabel="Configure Web Pixel Settings"
+              onToggle={handleWebPixelFeatureEnabledToggle}
+            />
+          )}
+
+          {/* JS Web Config Status Card */}
+          {hasApiKey && (
+            <StatusCard
+              title="JS Web Config"
+              icon={<CodeIcon />}
+              featureEnabled={jsWebPosthogFeatureEnabled}
+              dirty={jsWebPosthogFeatureEnabledInitialState !== jsWebPosthogFeatureEnabled || !!PostHogApiKey !== !!PosthogApiKeyInitialState}
+              hasActionRequired={jsWebHasActionRequired}
+              requirements={[
+                { trigger: !PostHogApiKey, message: 'Setup PostHog project API key.' },
+                { trigger: !posthogApiHost, message: 'Setup PostHog API Host.' },
+                {
+                  trigger: !jsWebPosthogAppEmbedStatus,
+                  message: (
+                    <>
+                      Toggle PostHog JS web app embed on.{' '}
+                      <a href={`https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${jsWebPosthogAppEmbedUuid}/${jsWebPosthogAppEmbedHandle}`} target="_top">
+                        Click here
+                      </a>
+                      . Ensure changes are saved.
+                    </>
+                  ),
+                },
+              ]}
+              configureUrl="/app/js-web-posthog-settings"
+              configureLabel="Configure JS PostHog Settings"
+              onToggle={handleJsWebPosthogFeatureEnabledToggle}
+            />
+          )}
+
+          {/* Quick Tips Card */}
+          <div className={styles.tipsCard}>
+            <div className={styles.tipsHeader}>
+              <span className={styles.tipsIcon}><LightbulbIcon /></span>
+              <h4 className={styles.tipsTitle}>Quick Tips</h4>
+            </div>
+            <div className={styles.tipItem}>
+              <span className={styles.tipBullet}>•</span>
+              <p className={styles.tipText}>Use a Reverse Proxy for better data collection reliability</p>
+            </div>
+            <div className={styles.tipItem}>
+              <span className={styles.tipBullet}>•</span>
+              <p className={styles.tipText}>Identified By Consent is recommended for GDPR compliance</p>
+            </div>
+            <div className={styles.tipItem}>
+              <span className={styles.tipBullet}>•</span>
+              <p className={styles.tipText}>Your API key can be found in PostHog → Project Settings</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
