@@ -7,6 +7,12 @@ interface Product {
   product_id: string | null;
 
   /**
+   * Variant ID of the product
+   * @example 'gid://shopify/ProductVariant/12345'
+   */
+  variant_id: string | null;
+
+  /**
    * SKU (Stock Keeping Unit) of the product
    * @example '18499-12'
    */
@@ -153,11 +159,12 @@ export function checkoutStartedSpec(shop: Shop, event: StandardEvents['checkout_
     products: checkout.lineItems.map<Product>((lineItem, index) => {
       return {
         // if custom product things are is null
-        product_id: lineItem.id,
+        product_id: lineItem.variant?.product.id || lineItem.id,
+        variant_id: lineItem.id,
         sku: lineItem.variant?.sku || null,
-        category: null,
+        category: lineItem.variant?.product.type || null,
         name: lineItem.title,
-        brand: null,
+        brand: lineItem.variant?.product.vendor || null,
         variant: lineItem.variant?.untranslatedTitle || lineItem.variant?.title || null,
         price: lineItem.finalLinePrice.amount,
         quantity: lineItem.quantity,

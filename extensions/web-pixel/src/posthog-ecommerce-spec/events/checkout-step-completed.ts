@@ -41,7 +41,7 @@ export function checkoutStepCompletedSpec(
       ? checkout.transactions.map((transaction) => transaction.paymentMethod).join(',')
       : null,
     shipping_method: checkout.delivery?.selectedDeliveryOptions.length
-      ? checkout.delivery?.selectedDeliveryOptions.map((option) => option.title).join('?')
+      ? checkout.delivery?.selectedDeliveryOptions.map((option) => option.title).join(',')
       : null,
     step: checkoutSequencing.findIndex((sequence) => event.name == sequence) + 1,
   };

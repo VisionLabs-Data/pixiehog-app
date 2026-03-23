@@ -35,6 +35,12 @@ interface Product {
   product_id: string | null;
 
   /**
+   * Variant ID of the product
+   * @example 'gid://shopify/ProductVariant/12345'
+   */
+  variant_id: string | null;
+
+  /**
    * SKU (Stock Keeping Unit) of the product
    * @example '92849-15'
    */
@@ -151,14 +157,15 @@ export function productListFilteredSpec(
     sorts: [],
     products: searchResult.productVariants.map((productVariant, index) => {
       return {
-        category: null,
-        brand: null,
+        category: productVariant.product.type || null,
+        brand: productVariant.product.vendor || null,
         coupon: null,
         name: productVariant.product.title || null,
         image_url: productVariant.image?.src || null,
         position: index + 1,
         price: productVariant.price.amount,
-        product_id: productVariant.id,
+        product_id: productVariant.product.id || productVariant.id,
+        variant_id: productVariant.id,
         sku: productVariant.sku || null,
         url: productVariant.product.url || null,
         quantity: 1,

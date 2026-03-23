@@ -7,6 +7,12 @@ interface CartProduct {
   product_id: string | null;
 
   /**
+   * Variant ID of the product
+   * @example 'gid://shopify/ProductVariant/12345'
+   */
+  variant_id: string | null;
+
+  /**
    * SKU (Stock Keeping Unit) of the product
    * @example '18499-12'
    */
@@ -95,14 +101,15 @@ export function cartViewedSpec(shop: Shop, event: StandardEvents['cart_viewed'])
       ? cart?.lines.map<CartProduct>((line, index) => {
           return {
             // if custom product things are is null
-            brand: null,
-            category: null,
+            brand: line.merchandise.product.vendor || null,
+            category: line.merchandise.product.type || null,
             coupon: null,
             image_url: line.merchandise.image?.src || null,
             name: line.merchandise.title || null,
             position: index + 1,
             price: line.merchandise.price.amount,
             product_id: line.merchandise.product.id || null,
+            variant_id: line.merchandise.id || null,
             quantity: line.quantity,
             sku: line.merchandise.sku || null,
             url: line.merchandise.product.url || null,

@@ -8,6 +8,12 @@ interface ProductViewedEvent {
   product_id: string | null;
 
   /**
+   * Variant ID of the product
+   * @example 'gid://shopify/ProductVariant/12345'
+   */
+  variant_id: string | null;
+
+  /**
    * SKU (Stock Keeping Unit) of the product
    * @example '43431-18'
    */
@@ -94,8 +100,8 @@ export function productViewedSpec(
   const productVariant = event.data.productVariant;
 
   return {
-    brand: null,
-    category: null,
+    brand: productVariant.product.vendor || null,
+    category: productVariant.product.type || null,
     coupon: null,
     position: null,
     image_url: productVariant.image?.src || null,
@@ -103,6 +109,7 @@ export function productViewedSpec(
     price: productVariant.price.amount || null,
     value: productVariant.price.amount || null,
     product_id: productVariant.product.id || null,
+    variant_id: productVariant.id || null,
     quantity: 1,
     sku: productVariant.sku || null,
     url: productVariant.product.url || null,

@@ -14,6 +14,14 @@ api_version = "2024-10"
   uri = "/webhooks/app/uninstalled"
 
   [[webhooks.subscriptions]]
+  topics = [ "orders/create", "orders/cancelled" ]
+  uri = "pubsub://hello-conversions:vizhog-shopify-webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = [ "refunds/create" ]
+  uri = "pubsub://hello-conversions:vizhog-shopify-webhooks"
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
   compliance_topics = [ "customers/data_request" ]
 
@@ -31,7 +39,7 @@ embedded_app_direct_api_access = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customer_events,read_themes,write_pixels"
+scopes = "read_customer_events,read_themes,write_pixels,read_orders"
 
 [auth]
 redirect_urls = [

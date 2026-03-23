@@ -14,6 +14,12 @@ interface ProductAddedOrRemovedEvent {
   product_id: string | null;
 
   /**
+   * Variant ID of the product
+   * @example 'gid://shopify/ProductVariant/12345'
+   */
+  variant_id: string | null;
+
+  /**
    * SKU (Stock Keeping Unit) of the product
    * @example '94839-23'
    */
@@ -88,15 +94,16 @@ export function productRemovedOrAddedSpec(
   const cartLine = event.data.cartLine;
 
   return {
-    brand: null,
+    brand: cartLine?.merchandise.product.vendor || null,
     cart_id: null,
-    category: null,
+    category: cartLine?.merchandise.product.type || null,
     coupon: null,
     position: null,
     image_url: cartLine?.merchandise.image?.src || null,
     name: cartLine?.merchandise.product.title || null,
     price: cartLine?.merchandise.price.amount || null,
     product_id: cartLine?.merchandise.product.id || null,
+    variant_id: cartLine?.merchandise.id || null,
     quantity: cartLine?.quantity || null,
     sku: cartLine?.merchandise.sku || null,
     url: cartLine?.merchandise.product.url || null,

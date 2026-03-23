@@ -169,11 +169,12 @@ export function orderCompletedSpec(
     currency: checkout.currencyCode,
     products: checkout.lineItems.map((lineItem, index) => {
       return {
-        product_id: lineItem.id,
+        product_id: lineItem.variant?.product.id || lineItem.id,
+        variant_id: lineItem.id,
         sku: lineItem.variant?.sku || null,
-        category: null,
+        category: lineItem.variant?.product.type || null,
         name: lineItem.title,
-        brand: null,
+        brand: lineItem.variant?.product.vendor || null,
         variant: lineItem.variant?.untranslatedTitle || lineItem.variant?.title || null,
         price: lineItem.finalLinePrice.amount,
         quantity: lineItem.quantity,

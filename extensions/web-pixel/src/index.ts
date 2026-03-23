@@ -11,7 +11,6 @@ import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
 import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerce-spec/transformer-map';
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
-type JsonType = string | number | boolean | null | { [key: string]: JsonType } | Array<JsonType> | JsonType[]
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -142,7 +141,7 @@ register(async (extensionApi) => {
     let windowId = await getWindowId();
     const sessionPastMaximumLength = isNumber(startTimestamp) && startTimestamp > 0 && Math.abs(timestamp - startTimestamp) > SESSION_LENGTH_LIMIT * 1000;
     
-    const activityTimeout = Math.abs(timestamp - lastTimestamp) > sessionTimeoutMs;
+    const activityTimeout = lastTimestamp > 0 && Math.abs(timestamp - lastTimestamp) > sessionTimeoutMs;
     
     if (!sessionId || activityTimeout || sessionPastMaximumLength) {
       sessionId = uuidv7();
@@ -279,7 +278,7 @@ register(async (extensionApi) => {
     $os_version: userAgent?.os.version || null,
     $browser: userAgent?.browser.name || null,
     $browser_version: userAgent?.browser.version ? String(userAgent.browser.version) : null,
-    $device_type: (userAgent?.device.type || null) as JsonType,
+    $device_type: userAgent?.device.type || null,
     $current_url: init.context.document.location.href,
     $host: currentURLObject?.host || null,
     $pathname: currentURLObject?.pathname || null,
@@ -294,8 +293,6 @@ register(async (extensionApi) => {
     //$active_feature_flags: null,
     shop: init.data.shop as any,
     ...(init.data.customer as any),
-    // this might be out of date if the store uses side-cart
-    ...(init.data.cart as any),
     //https://posthog.com/docs/product-analytics/person-properties
     $set: {
       ...lastTouchCampaignParams,
@@ -304,7 +301,7 @@ register(async (extensionApi) => {
       $browser_version: userAgent?.browser.version || null,
       $os: userAgent?.os.name || null,
       $os_version: userAgent?.os.version || null,
-      $device_type: userAgent?.device.type as JsonType || null,
+      $device_type: userAgent?.device.type || null,
       $current_url: init.context.document.location.href,
       $pathname: currentURLObject?.pathname || null,
       $referrer: init.context.document.referrer || '$direct',
@@ -316,7 +313,7 @@ register(async (extensionApi) => {
       $initial_browser_version: userAgent?.browser.version || null,
       $initial_os: userAgent?.os.name || null,
       $initial_os_version: userAgent?.os.version || null,
-      $initial_device_type: userAgent?.device.type as JsonType || null,
+      $initial_device_type: userAgent?.device.type || null,
       $initial_current_url: init.context.document.location.href,
       $initial_pathname: currentURLObject?.pathname || null,
       $initial_referrer: init.context.document.referrer || '$direct',
@@ -381,22 +378,13 @@ register(async (extensionApi) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId();
         const eventName = resolveEventEcommerceName(event.name);
-        await posthog.captureStatelessPublic(distinctId, eventName, {
-          ...featureFlags,
-          ...initProperties,
-          ...(anonymous == true && {
-            customer: null,
-            purchasingCompany: null,
-          }),
-          cart: null,
-          client_id: event.clientId,
-          url: event.context.document.location.href,
-          $current_url: event.context.document.location.href,
-          $session_id : sessionId,
-          $configured_session_timeout_ms: sessionTimeoutMs,
-          $window_id: windowId,
-          ...(event.data.checkout),
-            ...(anonymous == true && {
+        const checkoutData = (() => {
+          const raw = { ...(event.data.checkout as unknown as Record<string, unknown>) };
+          if (anonymous == true) {
+            return {
+              ...raw,
+              customer: null,
+              purchasingCompany: null,
               billingAddress: null,
               email: null,
               order: {
@@ -410,8 +398,29 @@ register(async (extensionApi) => {
               phone: null,
               shippingAddress: null,
               smsMarketingPhone: null,
-            }),
-          ...resolveEventEcommerceSpecBody(event)
+            };
+          }
+          return raw;
+        })();
+
+        await posthog.captureStatelessPublic(distinctId, eventName, {
+          ...featureFlags,
+          ...initProperties,
+          ...(anonymous == true && {
+            customer: null,
+            purchasingCompany: null,
+          }),
+          client_id: event.clientId,
+          url: event.context.document.location.href,
+          $current_url: event.context.document.location.href,
+          $session_id : sessionId,
+          $configured_session_timeout_ms: sessionTimeoutMs,
+          $window_id: windowId,
+          // Ecommerce spec properties (flat, queryable)
+          ...resolveEventEcommerceSpecBody(event),
+          email: anonymous == true ? null : event.data.checkout.email,
+          // Raw checkout data namespaced to avoid polluting top-level
+          _checkout: checkoutData,
         }, {
           ...(uuid ? { uuid: uuid } : {}),
           timestamp: new Date(event.timestamp),
@@ -441,8 +450,9 @@ register(async (extensionApi) => {
             ...featureFlags,
             ...initProperties,
             ...(anonymous == true && {
-              customer: undefined,
-              purchasingCompany: undefined,
+              customer: null,
+              purchasingCompany: null,
+              $process_person_profile: false,
             }),
             client_id: event.clientId,
             url: event.context.document.location.href,
@@ -464,7 +474,7 @@ register(async (extensionApi) => {
     );
   }
 
-  const mouseEventsKeys = ['clicked', 'input_blurred', 'input_changed'] as const;
+  const mouseEventsKeys = ['clicked', 'input_blurred'] as const;
   const trackedMouseEventsKeys = mouseEventsKeys.filter((key) => activeEvents.includes(key));
   for (const key of trackedMouseEventsKeys) {
     analytics.subscribe(
@@ -483,8 +493,9 @@ register(async (extensionApi) => {
           ...{
             ...initProperties,
             ...(anonymous == true && {
-              customer: undefined,
-              purchasingCompany: undefined,
+              customer: null,
+              purchasingCompany: null,
+              $process_person_profile: false,
             }),
           },
           client_id: event.clientId,
@@ -542,8 +553,9 @@ register(async (extensionApi) => {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
-          customer: undefined,
-          purchasingCompany: undefined,
+          customer: null,
+          purchasingCompany: null,
+          $process_person_profile: false,
         }),
         client_id: event.clientId,
         url: event.context.document.location.href,
@@ -570,8 +582,9 @@ register(async (extensionApi) => {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
-          customer: undefined,
-          purchasingCompany: undefined,
+          customer: null,
+          purchasingCompany: null,
+          $process_person_profile: false,
         }),
         client_id: event.clientId,
         url: event.context.document.location.href,
@@ -600,8 +613,9 @@ register(async (extensionApi) => {
         ...{
           ...initProperties,
           ...(anonymous == true && {
-            customer: undefined,
-            purchasingCompany: undefined,
+            customer: null,
+            purchasingCompany: null,
+            $process_person_profile: false,
           }),
           cart: undefined,
         },
@@ -631,8 +645,9 @@ register(async (extensionApi) => {
         ...featureFlags,
           ...initProperties,
           ...(anonymous == true && {
-            customer: undefined,
-            purchasingCompany: undefined,
+            customer: null,
+            purchasingCompany: null,
+            $process_person_profile: false,
           }),
         client_id: event.clientId,
         url: event.context.document.location.href,

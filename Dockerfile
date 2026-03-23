@@ -19,4 +19,6 @@ COPY . .
 
 RUN npm run build
 
+USER node
+
 CMD ["npm", "run", "docker-start"]
