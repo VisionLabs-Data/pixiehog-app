@@ -262,14 +262,167 @@
             // --- Broadcast handler registry ---
             const broadcastHandlers = [];
 
-            // dataLayer handler
+            // dataLayer handler — transforms PostHog events to GA4 ecommerce spec
             const dataLayerEnabled = "{{ app.metafields.pxhog.datalayer_enabled }}" === "true";
             if (dataLayerEnabled) {
                 window.dataLayer = window.dataLayer || [];
+
+                // Maps both PostHog ecommerce spec names and Shopify native names to GA4
+                const ga4EventMap = {
+                    '$pageview': 'page_view',
+                    'page_viewed': 'page_view',
+                    'Product Viewed': 'view_item',
+                    'product_viewed': 'view_item',
+                    'Product List Viewed': 'view_item_list',
+                    'collection_viewed': 'view_item_list',
+                    'Product Added': 'add_to_cart',
+                    'product_added_to_cart': 'add_to_cart',
+                    'Product Removed': 'remove_from_cart',
+                    'product_removed_from_cart': 'remove_from_cart',
+                    'Cart Viewed': 'view_cart',
+                    'cart_viewed': 'view_cart',
+                    'Checkout Started': 'begin_checkout',
+                    'checkout_started': 'begin_checkout',
+                    'Checkout Step Completed': 'add_shipping_info',
+                    'checkout_address_info_submitted': 'add_shipping_info',
+                    'checkout_contact_info_submitted': 'add_shipping_info',
+                    'checkout_shipping_info_submitted': 'add_shipping_info',
+                    'Payment Info Entered': 'add_payment_info',
+                    'payment_info_submitted': 'add_payment_info',
+                    'Order Completed': 'purchase',
+                    'checkout_completed': 'purchase',
+                    'Product List Filtered': 'search',
+                    'search_submitted': 'search',
+                };
+
+                function toGA4Item(product, index) {
+                    const item = {};
+                    if (product.product_id) item.item_id = String(product.product_id);
+                    else if (product.sku) item.item_id = product.sku;
+                    if (product.name) item.item_name = product.name;
+                    if (product.brand) item.item_brand = product.brand;
+                    if (product.category) item.item_category = product.category;
+                    if (product.variant) item.item_variant = product.variant;
+                    if (product.price != null) item.price = Number(product.price);
+                    if (product.quantity != null) item.quantity = Number(product.quantity);
+                    if (product.coupon) item.coupon = product.coupon;
+                    item.index = product.position != null ? product.position - 1 : index;
+                    return item;
+                }
+
+                function pushEcommerce(ga4Event, ecommerce) {
+                    window.dataLayer.push({ ecommerce: null });
+                    window.dataLayer.push({ event: ga4Event, ecommerce });
+                }
+
                 broadcastHandlers.push({
                     name: 'dataLayer',
-                    handle(eventName, properties) {
-                        window.dataLayer.push({ event: eventName, ...properties });
+                    handle(eventName, p) {
+                        const ga4Event = ga4EventMap[eventName];
+                        if (!ga4Event) {
+                            // Unknown event — push raw
+                            window.dataLayer.push({ event: eventName, ...p });
+                            return;
+                        }
+
+                        if (ga4Event === 'page_view') {
+                            window.dataLayer.push({ event: 'page_view' });
+                            return;
+                        }
+
+                        if (ga4Event === 'search') {
+                            const term = p.query || (p.filters && p.filters[0]?.value) || '';
+                            window.dataLayer.push({ event: 'search', search_term: term });
+                            return;
+                        }
+
+                        if (ga4Event === 'view_item') {
+                            const item = toGA4Item(p, 0);
+                            pushEcommerce('view_item', {
+                                currency: p.currency || undefined,
+                                value: p.value != null ? Number(p.value) : (p.price != null ? Number(p.price) : undefined),
+                                items: [item],
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'view_item_list') {
+                            const items = (p.products || []).map((prod, i) => toGA4Item(prod, i));
+                            pushEcommerce('view_item_list', {
+                                item_list_id: p.list_id ? String(p.list_id) : undefined,
+                                items,
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'add_to_cart' || ga4Event === 'remove_from_cart') {
+                            const item = toGA4Item(p, 0);
+                            const value = (p.price != null && p.quantity != null)
+                                ? Number(p.price) * Number(p.quantity)
+                                : (p.price != null ? Number(p.price) : undefined);
+                            pushEcommerce(ga4Event, {
+                                currency: p.currency || undefined,
+                                value,
+                                items: [item],
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'view_cart') {
+                            const items = (p.products || []).map((prod, i) => toGA4Item(prod, i));
+                            const value = items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
+                            pushEcommerce('view_cart', {
+                                currency: p.currency || undefined,
+                                value: value || undefined,
+                                items,
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'begin_checkout') {
+                            const items = (p.products || []).map((prod, i) => toGA4Item(prod, i));
+                            pushEcommerce('begin_checkout', {
+                                currency: p.currency || undefined,
+                                value: p.value != null ? Number(p.value) : undefined,
+                                coupon: p.coupon || undefined,
+                                items,
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'add_shipping_info') {
+                            pushEcommerce('add_shipping_info', {
+                                currency: p.currency || undefined,
+                                value: p.value != null ? Number(p.value) : undefined,
+                                coupon: p.coupon || undefined,
+                                shipping_tier: p.shipping_method || undefined,
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'add_payment_info') {
+                            pushEcommerce('add_payment_info', {
+                                currency: p.currency || undefined,
+                                value: p.value != null ? Number(p.value) : undefined,
+                                coupon: p.coupon || undefined,
+                                payment_type: p.payment_method || undefined,
+                            });
+                            return;
+                        }
+
+                        if (ga4Event === 'purchase') {
+                            const items = (p.products || []).map((prod, i) => toGA4Item(prod, i));
+                            pushEcommerce('purchase', {
+                                transaction_id: p.order_id ? String(p.order_id) : (p.checkout_id ? String(p.checkout_id) : undefined),
+                                value: p.total != null ? Number(p.total) : (p.value != null ? Number(p.value) : undefined),
+                                currency: p.currency || undefined,
+                                tax: p.tax != null ? Number(p.tax) : undefined,
+                                shipping: p.shipping != null ? Number(p.shipping) : undefined,
+                                coupon: p.coupon || undefined,
+                                items,
+                            });
+                            return;
+                        }
                     }
                 });
             }
