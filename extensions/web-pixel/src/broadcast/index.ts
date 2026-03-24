@@ -6,20 +6,20 @@ type LocalStorage = {
   setItem(key: string, value: any): Promise<void>;
 };
 
-const BROADCAST_QUEUE_KEY = 'pxhog_broadcast_queue';
-
 export function createBroadcaster(config: BroadcastConfig, localStorage: LocalStorage) {
   const anyEnabled = Object.values(config).some(Boolean);
+  let counter = 0;
 
   return async function broadcast(eventName: string, properties: Record<string, any>) {
     if (!anyEnabled) return;
-    await localStorage.setItem(BROADCAST_QUEUE_KEY, JSON.stringify({
+    const idx = counter++;
+    await localStorage.setItem(`pxhog_bcast_${idx}`, JSON.stringify({
       event: eventName,
       properties,
       destinations: {
         dataLayer: config.dataLayerEnabled,
       },
-      _ts: Date.now(),
     }));
+    await localStorage.setItem('pxhog_bcast_ptr', String(idx));
   };
 }

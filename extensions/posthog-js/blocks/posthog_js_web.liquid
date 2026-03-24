@@ -278,26 +278,33 @@
             // const metaEnabled = "{{ app.metafields.pxhog.meta_pixel_enabled }}" === "true";
             // if (metaEnabled) { broadcastHandlers.push({ name: 'meta', handle(e, p) { fbq('track', e, p) } }); }
 
-            // Listener — polls localStorage because Shopify's strict sandbox
-            // proxies localStorage writes via postMessage through the parent page,
-            // which means the 'storage' event never fires in this context.
+            // Listener — uses counter-indexed localStorage queue.
+            // Polls a tiny pointer key; only parses event payloads when new entries exist.
+            // Each processed entry is removed to prevent unbounded storage growth.
             if (broadcastHandlers.length > 0) {
-                const BROADCAST_KEY = 'pxhog_broadcast_queue';
-                let lastTs = null;
+                let lastProcessed = -1;
                 setInterval(() => {
-                    const raw = localStorage.getItem(BROADCAST_KEY);
-                    if (!raw) return;
-                    try {
-                        const data = JSON.parse(raw);
-                        if (data._ts === lastTs) return;
-                        lastTs = data._ts;
-                        const { event: eventName, properties, destinations } = data;
-                        for (const handler of broadcastHandlers) {
-                            if (destinations[handler.name]) {
-                                handler.handle(eventName, properties);
+                    const ptrRaw = localStorage.getItem('pxhog_bcast_ptr');
+                    if (ptrRaw === null) return;
+                    const ptr = parseInt(ptrRaw, 10);
+                    if (isNaN(ptr) || ptr <= lastProcessed) return;
+
+                    for (let i = lastProcessed + 1; i <= ptr; i++) {
+                        const key = `pxhog_bcast_${i}`;
+                        const raw = localStorage.getItem(key);
+                        if (!raw) continue;
+                        try {
+                            const data = JSON.parse(raw);
+                            const { event: eventName, properties, destinations } = data;
+                            for (const handler of broadcastHandlers) {
+                                if (destinations[handler.name]) {
+                                    handler.handle(eventName, properties);
+                                }
                             }
-                        }
-                    } catch (e) { /* silently ignore malformed data */ }
+                        } catch (e) { /* ignore malformed data */ }
+                        localStorage.removeItem(key);
+                    }
+                    lastProcessed = ptr;
                 }, 200);
             }
 
