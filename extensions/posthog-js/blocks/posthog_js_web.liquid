@@ -310,9 +310,9 @@
                     return item;
                 }
 
-                function pushEcommerce(ga4Event, ecommerce) {
+                function pushEcommerce(ga4Event, ecommerce, allProps) {
                     window.dataLayer.push({ ecommerce: null });
-                    window.dataLayer.push({ event: ga4Event, ecommerce });
+                    window.dataLayer.push({ ...allProps, event: ga4Event, ecommerce });
                 }
 
                 broadcastHandlers.push({
@@ -326,13 +326,13 @@
                         }
 
                         if (ga4Event === 'page_view') {
-                            window.dataLayer.push({ event: 'page_view' });
+                            window.dataLayer.push({ ...p, event: 'page_view' });
                             return;
                         }
 
                         if (ga4Event === 'search') {
                             const term = p.query || (p.filters && p.filters[0]?.value) || '';
-                            window.dataLayer.push({ event: 'search', search_term: term });
+                            window.dataLayer.push({ ...p, event: 'search', search_term: term });
                             return;
                         }
 
@@ -342,7 +342,7 @@
                                 currency: p.currency || undefined,
                                 value: p.value != null ? Number(p.value) : (p.price != null ? Number(p.price) : undefined),
                                 items: [item],
-                            });
+                            }, p);
                             return;
                         }
 
@@ -351,7 +351,7 @@
                             pushEcommerce('view_item_list', {
                                 item_list_id: p.list_id ? String(p.list_id) : undefined,
                                 items,
-                            });
+                            }, p);
                             return;
                         }
 
@@ -364,7 +364,7 @@
                                 currency: p.currency || undefined,
                                 value,
                                 items: [item],
-                            });
+                            }, p);
                             return;
                         }
 
@@ -375,7 +375,7 @@
                                 currency: p.currency || undefined,
                                 value: value || undefined,
                                 items,
-                            });
+                            }, p);
                             return;
                         }
 
@@ -386,7 +386,7 @@
                                 value: p.value != null ? Number(p.value) : undefined,
                                 coupon: p.coupon || undefined,
                                 items,
-                            });
+                            }, p);
                             return;
                         }
 
@@ -396,7 +396,7 @@
                                 value: p.value != null ? Number(p.value) : undefined,
                                 coupon: p.coupon || undefined,
                                 shipping_tier: p.shipping_method || undefined,
-                            });
+                            }, p);
                             return;
                         }
 
@@ -406,7 +406,7 @@
                                 value: p.value != null ? Number(p.value) : undefined,
                                 coupon: p.coupon || undefined,
                                 payment_type: p.payment_method || undefined,
-                            });
+                            }, p);
                             return;
                         }
 
@@ -420,7 +420,7 @@
                                 shipping: p.shipping != null ? Number(p.shipping) : undefined,
                                 coupon: p.coupon || undefined,
                                 items,
-                            });
+                            }, p);
                             return;
                         }
                     }
