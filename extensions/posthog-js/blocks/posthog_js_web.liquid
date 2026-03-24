@@ -259,7 +259,41 @@
             
             window.posthog.init(apiKey, posthogConfig);
 
-           
+            // --- Broadcast handler registry ---
+            const broadcastHandlers = [];
+
+            // dataLayer handler
+            const dataLayerEnabled = "{{ app.metafields.pxhog.datalayer_enabled }}" === "true";
+            if (dataLayerEnabled) {
+                window.dataLayer = window.dataLayer || [];
+                broadcastHandlers.push({
+                    name: 'dataLayer',
+                    handle(eventName, properties) {
+                        window.dataLayer.push({ event: eventName, ...properties });
+                    }
+                });
+            }
+
+            // Future handlers go here:
+            // const metaEnabled = "{{ app.metafields.pxhog.meta_pixel_enabled }}" === "true";
+            // if (metaEnabled) { broadcastHandlers.push({ name: 'meta', handle(e, p) { fbq('track', e, p) } }); }
+
+            // Listener
+            if (broadcastHandlers.length > 0) {
+                window.addEventListener('storage', (event) => {
+                    if (event.key !== 'pxhog_broadcast_queue' || !event.newValue) return;
+                    try {
+                        const data = JSON.parse(event.newValue);
+                        const { event: eventName, properties, destinations } = data;
+                        for (const handler of broadcastHandlers) {
+                            if (destinations[handler.name]) {
+                                handler.handle(eventName, properties);
+                            }
+                        }
+                    } catch (e) { /* silently ignore malformed data */ }
+                });
+            }
+
         })();
     </script>
 

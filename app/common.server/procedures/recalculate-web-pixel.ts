@@ -18,6 +18,9 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
   type ValueOf<T> = T[keyof T];
   const dataCollectionStrategyKey = currentAppInstallation.data_collection_strategy?.value as ValueOf<DataCollectionStrategy>
   
+  const posthogEcommerceSpec = currentAppInstallation.web_pixel_posthog_ecommerce_spec?.value == 'true'
+  const dataLayerEnabled = currentAppInstallation.datalayer_enabled?.value == 'true'
+
   const webPixelFeatureToggle = currentAppInstallation.web_pixel_feature_toggle?.jsonValue == true
   const dtoResult = WebPixelSettingsSchema.safeParse({
     ...(posthogApiKey && {
@@ -32,6 +35,8 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     ...(metafieldWebPixelSettings && {
       ...metafieldWebPixelSettings,
     }),
+    posthog_ecommerce_spec: !!posthogEcommerceSpec,
+    datalayer_enabled: !!dataLayerEnabled,
   } as WebPixelSettings);
   if (!webPixelFeatureToggle) {
     if (!shopifyWebPixel?.id) {

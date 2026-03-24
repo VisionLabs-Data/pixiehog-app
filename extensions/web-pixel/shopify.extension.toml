@@ -42,3 +42,8 @@ validations =  [
 name = "Toggle PostHog Ecommerce spec"
 description = "Toggle PostHog Ecommerce spec"
 type = "single_line_text_field"
+
+[settings.fields.datalayer_enabled]
+name = "Toggle GTM dataLayer"
+description = "Toggle GTM dataLayer broadcast"
+type = "single_line_text_field"

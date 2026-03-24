@@ -19,6 +19,7 @@ import LoadingSpinner from '../../../common/components/LoadingSpinner';
 import { queryWebPixel } from '../../common.client/queries/web-pixel';
 import type { WebPixelSettings } from '../../../common/dto/web-pixel-settings.dto';
 import { WebPixelPostHogEcommerceSpecSchema } from '../../../common/dto/web-pixel-posthog-ecommerce-spec';
+import { WebPixelDataLayerEnabledSchema } from '../../../common/dto/web-pixel-datalayer-enabled';
 import { posthogSvg } from './posthog.svg';
 import { urlWithShopParam } from '../../../common/utils';
 import { posthogKeys, shopifyKeys } from './keyoverrides';
@@ -32,7 +33,7 @@ export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
 
 export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
   const payload = await request.json();
-  const dtoResult = WebPixelEventsSettingsSchema.merge(WebPixelFeatureToggleSchema).merge(WebPixelPostHogEcommerceSpecSchema).safeParse(payload);
+  const dtoResult = WebPixelEventsSettingsSchema.merge(WebPixelFeatureToggleSchema).merge(WebPixelPostHogEcommerceSpecSchema).merge(WebPixelDataLayerEnabledSchema).safeParse(payload);
   if (!dtoResult.success) {
     const message = Object.entries(dtoResult.error.flatten().fieldErrors)
       .map(([key, errors]) => {
@@ -43,7 +44,7 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
   }
   const response = await clientQueryCurrentAppInstallation();
 
-  const { web_pixel_feature_toggle, posthog_ecommerce_spec, ...webPixelEventSettings } = dtoResult.data;
+  const { web_pixel_feature_toggle, posthog_ecommerce_spec, datalayer_enabled, ...webPixelEventSettings } = dtoResult.data;
 
   await clientMetafieldsSet([
     {
@@ -72,6 +73,13 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
       namespace: Constant.METAFIELD_NAMESPACE,
       ownerId: response.currentAppInstallation.id,
       value: posthog_ecommerce_spec.toString(),
+      type: 'boolean',
+    },
+    {
+      key: Constant.METAFIELD_KEY_DATALAYER_ENABLED,
+      namespace: Constant.METAFIELD_NAMESPACE,
+      ownerId: response.currentAppInstallation.id,
+      value: datalayer_enabled.toString(),
       type: 'boolean',
     },
   ]);
@@ -110,6 +118,7 @@ export default function WebPixelEvents() {
     | WebPixelEventsSettings;
 
   const postHogEcommerceSpecMetafiledValue = currentAppInstallation.web_pixel_posthog_ecommerce_spec?.jsonValue == true;
+  const dataLayerEnabledMetafieldValue = currentAppInstallation.datalayer_enabled?.jsonValue == true;
 
 
   const webPixelSettingsInitialState = defaultWebPixelSettings.map<WebPixelSettingChoice>((entry) => {
@@ -184,6 +193,12 @@ export default function WebPixelEvents() {
     [],
   );
 
+  const [checkedDataLayer, setCheckedDataLayer] = useState(!!dataLayerEnabledMetafieldValue);
+  const handleChangeDataLayer = useCallback(
+    (newChecked: boolean) => setCheckedDataLayer(newChecked),
+    [],
+  );
+
   useEffect(() => {
     if (fetcher.state == 'loading' || fetcher.state == 'submitting') {
       return;
@@ -222,6 +237,7 @@ export default function WebPixelEvents() {
         ),
         web_pixel_feature_toggle: webPixelFeatureEnabled,
         posthog_ecommerce_spec: checkedEcommerceSpec,
+        datalayer_enabled: checkedDataLayer,
       },
       {
         method: 'POST',
@@ -241,8 +257,11 @@ export default function WebPixelEvents() {
     if (postHogEcommerceSpecMetafiledValue != checkedEcommerceSpec) {
       return true;
     }
+    if (dataLayerEnabledMetafieldValue != checkedDataLayer) {
+      return true;
+    }
     return false;
-  }, [webPixelSettings, webPixelFeatureEnabled, webPixelFeatureToggleInitialState, webPixelSettingsInitialState, postHogEcommerceSpecMetafiledValue, checkedEcommerceSpec]);
+  }, [webPixelSettings, webPixelFeatureEnabled, webPixelFeatureToggleInitialState, webPixelSettingsInitialState, postHogEcommerceSpecMetafiledValue, checkedEcommerceSpec, dataLayerEnabledMetafieldValue, checkedDataLayer]);
 
   const allEventsDisabled = webPixelSettings.every((entry) => !entry.value);
   return (
@@ -314,7 +333,14 @@ export default function WebPixelEvents() {
 
                 </InlineStack>
               </InlineStack>
-              
+              <Divider />
+              <InlineStack gap="200" align="start"  blockAlign="center" wrap={false}>
+                <Checkbox
+                  label="Toggle GTM dataLayer Broadcast"
+                  checked={checkedDataLayer}
+                  onChange={handleChangeDataLayer}
+                />
+              </InlineStack>
               <Divider />
               <Tabs disabled={!webPixelFeatureEnabled} tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
                 <BlockStack gap="500">

@@ -11,6 +11,7 @@ import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
 import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerce-spec/transformer-map';
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
+import { createBroadcaster } from './broadcast';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -25,6 +26,7 @@ register(async (extensionApi) => {
    * Web Pixel settings can only be strings
    */
   const posthogEcommerceSpecEnabled = String(settings?.posthog_ecommerce_spec || '') == 'true'
+  const dataLayerEnabled = String(settings?.datalayer_enabled || '') == 'true'
   const possibleEvents: (keyof PixelEvents)[] = [
     'cart_viewed',
     'checkout_address_info_submitted',
@@ -198,6 +200,21 @@ register(async (extensionApi) => {
     }
   }
   const featureFlags = await calculateFeatureFlags();
+
+  const broadcast = createBroadcaster(
+    { dataLayerEnabled },
+    localStorage,
+  );
+
+  async function captureAndBroadcast(
+    distinctId: string,
+    eventName: string,
+    properties: Record<string, any>,
+    options: Record<string, any>,
+  ) {
+    await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
+    await broadcast(eventName, properties);
+  }
 
   const anonymous: boolean = (() =>{
 
@@ -403,7 +420,7 @@ register(async (extensionApi) => {
           return raw;
         })();
 
-        await posthog.captureStatelessPublic(distinctId, eventName, {
+        await captureAndBroadcast(distinctId, eventName, {
           ...featureFlags,
           ...initProperties,
           ...(anonymous == true && {
@@ -445,7 +462,7 @@ register(async (extensionApi) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId()
         const eventName = resolveEventEcommerceName(event.name);
-        posthog.captureStatelessPublic(distinctId, eventName, 
+        captureAndBroadcast(distinctId, eventName,
           {
             ...featureFlags,
             ...initProperties,
@@ -485,7 +502,7 @@ register(async (extensionApi) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId()
         const eventName = resolveEventEcommerceName(event.name)
-        posthog.captureStatelessPublic( distinctId, eventName,{
+        captureAndBroadcast(distinctId, eventName,{
           ...featureFlags,
           $session_id : sessionId,
           $configured_session_timeout_ms: sessionTimeoutMs,
@@ -515,7 +532,7 @@ register(async (extensionApi) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
       const eventName = resolveEventEcommerceName(event.name);
-      posthog.captureStatelessPublic(distinctId, eventName, {
+      captureAndBroadcast(distinctId, eventName, {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -549,7 +566,7 @@ register(async (extensionApi) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
       const eventName = resolveEventEcommerceName(event.name)
-      posthog.captureStatelessPublic(distinctId, eventName,{
+      captureAndBroadcast(distinctId, eventName,{
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -578,7 +595,7 @@ register(async (extensionApi) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
       const eventName = resolveEventEcommerceName(event.name)
-      posthog.captureStatelessPublic(distinctId, eventName, {
+      captureAndBroadcast(distinctId, eventName, {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -608,7 +625,7 @@ register(async (extensionApi) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
       const eventName = resolveEventEcommerceName(event.name);
-      posthog.captureStatelessPublic(distinctId, eventName, {
+      captureAndBroadcast(distinctId, eventName, {
         ...featureFlags,
         ...{
           ...initProperties,
@@ -641,7 +658,7 @@ register(async (extensionApi) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
       const eventName = resolveEventEcommerceName(event.name);
-      posthog.captureStatelessPublic(distinctId, eventName,{
+      captureAndBroadcast(distinctId, eventName,{
         ...featureFlags,
           ...initProperties,
           ...(anonymous == true && {
@@ -688,7 +705,7 @@ register(async (extensionApi) => {
           })
           .filter((el): el is [string, string] => !!el)
       );
-      await posthog.captureStatelessPublic(distinctId, eventName, {
+      await captureAndBroadcast(distinctId, eventName, {
         ...featureFlags,
         $session_id : sessionId,
         $configured_session_timeout_ms: sessionTimeoutMs,

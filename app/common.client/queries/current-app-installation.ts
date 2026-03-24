@@ -15,6 +15,7 @@ export const queryCurrentAppInstallation = async () => {
         $dataCollectionStrategyKey: String!
         $webPixelTrackedEvents: String!
         $webPixelPostHogEcommerceSpecKey: String!
+        $dataLayerEnabledKey: String!
       ) {
         currentAppInstallation {
           id
@@ -74,6 +75,12 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
+          datalayer_enabled: metafield(namespace: $namespace, key: $dataLayerEnabledKey) {
+            key
+            jsonValue
+            value
+            type
+          },
         }
       }
     `,
@@ -89,6 +96,7 @@ export const queryCurrentAppInstallation = async () => {
         dataCollectionStrategyKey: Constant.METAFIELD_KEY_DATA_COLLECTION_STRATEGY,
         webPixelTrackedEvents: Constant.METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS,
         webPixelPostHogEcommerceSpecKey: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
+        dataLayerEnabledKey: Constant.METAFIELD_KEY_DATALAYER_ENABLED,
       },
     }
   );

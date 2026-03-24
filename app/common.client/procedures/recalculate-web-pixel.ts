@@ -23,6 +23,7 @@ export async function recalculateWebPixel(): Promise<
     | null
     | undefined;
   const posthogEcommerceSpec = response.currentAppInstallation.web_pixel_posthog_ecommerce_spec?.value == 'true'
+  const dataLayerEnabled = response.currentAppInstallation.datalayer_enabled?.value == 'true'
   type ValueOf<T> = T[keyof T];
   const dataCollectionStrategyKey = response.currentAppInstallation.data_collection_strategy
     ?.value as ValueOf<DataCollectionStrategy>;
@@ -42,6 +43,7 @@ export async function recalculateWebPixel(): Promise<
       tracked_events: JSON.stringify(trackedEvents),
     }),
     posthog_ecommerce_spec: !!posthogEcommerceSpec,
+    datalayer_enabled: !!dataLayerEnabled,
   } as WebPixelSettings);
 
   if (!webPixelFeatureToggle) {
