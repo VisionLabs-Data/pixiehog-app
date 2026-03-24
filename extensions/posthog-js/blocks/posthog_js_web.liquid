@@ -278,12 +278,19 @@
             // const metaEnabled = "{{ app.metafields.pxhog.meta_pixel_enabled }}" === "true";
             // if (metaEnabled) { broadcastHandlers.push({ name: 'meta', handle(e, p) { fbq('track', e, p) } }); }
 
-            // Listener
+            // Listener — polls localStorage because Shopify's strict sandbox
+            // proxies localStorage writes via postMessage through the parent page,
+            // which means the 'storage' event never fires in this context.
             if (broadcastHandlers.length > 0) {
-                window.addEventListener('storage', (event) => {
-                    if (event.key !== 'pxhog_broadcast_queue' || !event.newValue) return;
+                const BROADCAST_KEY = 'pxhog_broadcast_queue';
+                let lastTs = null;
+                setInterval(() => {
+                    const raw = localStorage.getItem(BROADCAST_KEY);
+                    if (!raw) return;
                     try {
-                        const data = JSON.parse(event.newValue);
+                        const data = JSON.parse(raw);
+                        if (data._ts === lastTs) return;
+                        lastTs = data._ts;
                         const { event: eventName, properties, destinations } = data;
                         for (const handler of broadcastHandlers) {
                             if (destinations[handler.name]) {
@@ -291,7 +298,7 @@
                             }
                         }
                     } catch (e) { /* silently ignore malformed data */ }
-                });
+                }, 200);
             }
 
         })();
