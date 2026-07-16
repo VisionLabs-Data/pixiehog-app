@@ -21,6 +21,11 @@ api_version = "2024-10"
   topics = [ "refunds/create" ]
   uri = "pubsub://hello-conversions:vizhog-shopify-webhooks"
 
+  # Mythic server-side conversion forwarding (authoritative purchase/refund signals)
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create", "orders/cancelled", "refunds/create" ]
+  uri = "/webhooks/orders"
+
   [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
   compliance_topics = [ "customers/data_request" ]

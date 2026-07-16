@@ -17,6 +17,7 @@ import type { WebPixelSettingChoice } from './app.web-pixel-settings/interface/s
 import { defaultWebPixelSettings } from './app.web-pixel-settings/default-web-pixel-settings';
 import type { PosthogApiHost} from 'common/dto/posthog-api-host.dto';
 import { PosthogApiHostSchema, posthogApiHostPrimitive } from 'common/dto/posthog-api-host.dto';
+import { mythicApiKeyPrimitive, mythicApiHostPrimitive } from '../../common/dto/mythic-settings.dto';
 import { urlWithShopParam } from '../../common/utils';
 import type { DataCollectionStrategy} from 'common/dto/data-collection-stratergy';
 import { DataCollectionStrategySchema} from 'common/dto/data-collection-stratergy';
@@ -149,6 +150,44 @@ export const clientAction = async ({
       value: dtoResultPosthogApiHost.data.posthog_api_host?.toString(),
     })
   }
+  // mythic settings (coexists with posthog — either/both may be configured)
+  const mythicEnabled = payload.mythic_enabled === true || payload.mythic_enabled === 'true';
+  const parsedMythicKey = mythicApiKeyPrimitive.safeParse(payload.mythic_api_key ?? '');
+  if (!parsedMythicKey.success) {
+    return { ok: false, message: parsedMythicKey.error.flatten().formErrors.join(' - ') || 'invalid Mythic key' };
+  }
+  const parsedMythicHost = mythicApiHostPrimitive.safeParse(payload.mythic_api_host ?? '');
+  if (!parsedMythicHost.success) {
+    return { ok: false, message: parsedMythicHost.error.flatten().formErrors.join(' - ') || 'invalid Mythic host' };
+  }
+  metafieldsSetData.push({
+    key: Constant.METAFIELD_KEY_MYTHIC_ENABLED,
+    namespace: Constant.METAFIELD_NAMESPACE,
+    ownerId: appId,
+    type: 'boolean',
+    value: String(mythicEnabled),
+  });
+  metafieldsSetData.push({
+    key: Constant.METAFIELD_KEY_MYTHIC_API_HOST,
+    namespace: Constant.METAFIELD_NAMESPACE,
+    ownerId: appId,
+    type: 'single_line_text_field',
+    value: parsedMythicHost.data || Constant.MYTHIC_DEFAULT_API_HOST,
+  });
+  if (parsedMythicKey.data === '') {
+    await clientMetafieldsDelete([
+      { key: Constant.METAFIELD_KEY_MYTHIC_API_KEY, namespace: Constant.METAFIELD_NAMESPACE, ownerId: appId },
+    ]);
+  } else {
+    metafieldsSetData.push({
+      key: Constant.METAFIELD_KEY_MYTHIC_API_KEY,
+      namespace: Constant.METAFIELD_NAMESPACE,
+      ownerId: appId,
+      type: 'single_line_text_field',
+      value: parsedMythicKey.data,
+    });
+  }
+
   await clientMetafieldsSet(metafieldsSetData);
 
 
@@ -362,6 +401,14 @@ export default function Index() {
     [],
   );
 
+  // mythic (coexists with posthog)
+  const mythicApiKeyInitialState = currentAppInstallation.mythic_api_key?.value || '';
+  const [mythicApiKey, setMythicApiKey] = useState(mythicApiKeyInitialState);
+  const mythicApiHostInitialState = currentAppInstallation.mythic_api_host?.value || Constant.MYTHIC_DEFAULT_API_HOST;
+  const [mythicApiHost, setMythicApiHost] = useState(mythicApiHostInitialState);
+  const mythicEnabledInitialState = currentAppInstallation.mythic_enabled?.value === 'true';
+  const [mythicEnabled, setMythicEnabled] = useState(mythicEnabledInitialState);
+
   //data collection strategy
   type ValueOf<T> = T[keyof T];
   const DataCollectionStrategyInitialState: ValueOf<DataCollectionStrategy> = currentAppInstallation.data_collection_strategy?.value as ValueOf<DataCollectionStrategy> || 'anonymized';
@@ -445,6 +492,15 @@ export default function Index() {
     if (posthogApiHost != "custom" && PosthogApiHostInitialState != posthogApiHost) {
       return true
     }
+    if (mythicApiKeyInitialState != mythicApiKey) {
+      return true
+    }
+    if (mythicApiHostInitialState != mythicApiHost) {
+      return true
+    }
+    if (mythicEnabledInitialState != mythicEnabled) {
+      return true
+    }
     return false
   }, [
     PosthogApiKeyInitialState,
@@ -457,7 +513,13 @@ export default function Index() {
     dataCollectionStrategy,
     posthogApiHost,
     PosthogApiHostInitialState,
-    posthogApiHostCustom
+    posthogApiHostCustom,
+    mythicApiKeyInitialState,
+    mythicApiKey,
+    mythicApiHostInitialState,
+    mythicApiHost,
+    mythicEnabledInitialState,
+    mythicEnabled
   ])
 
 
@@ -508,7 +570,9 @@ export default function Index() {
         js_web_posthog_feature_toggle: jsWebPosthogFeatureEnabled,
         web_pixel_feature_toggle: webPixelFeatureEnabled,
         data_collection_strategy: dataCollectionStrategy,
-
+        mythic_api_key: mythicApiKey,
+        mythic_api_host: mythicApiHost,
+        mythic_enabled: mythicEnabled,
       },
       {
         method: 'POST',
@@ -692,6 +756,61 @@ export default function Index() {
                 </span>
               </div>
             )}
+          </div>
+
+          {/* ── Connect Mythic (optional, coexists with PostHog) ── */}
+          <div className={styles.setupCard}>
+            <div className={styles.cardHeader}>
+              <div className={styles.stepBadge}>2</div>
+              <h2 className={styles.stepTitle}>Connect Mythic</h2>
+            </div>
+
+            <p className={styles.stepDesc}>
+              Forward the same storefront events to Mythic Analytics. Runs alongside PostHog — enable either or
+              both. Server-side order conversions are forwarded automatically.
+            </p>
+
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={mythicEnabled}
+                  onChange={(e) => setMythicEnabled(e.target.checked)}
+                />
+                Enable Mythic
+              </label>
+            </div>
+
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldLabelRow}>
+                <label className={styles.fieldLabel}>Mythic Publishable Key</label>
+              </div>
+              <div className={styles.fieldInput}>
+                <input
+                  type="text"
+                  value={mythicApiKey}
+                  onChange={(e) => setMythicApiKey(e.target.value)}
+                  placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  autoComplete="off"
+                />
+              </div>
+              <p className={styles.fieldHint}>Starts with <strong>pk_</strong>. Used by both the storefront pixel and server-side conversions.</p>
+            </div>
+
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldLabelRow}>
+                <label className={styles.fieldLabel}>Mythic API Host</label>
+              </div>
+              <div className={styles.fieldInput}>
+                <input
+                  type="url"
+                  value={mythicApiHost}
+                  onChange={(e) => setMythicApiHost(e.target.value)}
+                  placeholder={Constant.MYTHIC_DEFAULT_API_HOST}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

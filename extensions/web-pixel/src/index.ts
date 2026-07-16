@@ -9,6 +9,7 @@ import { calculateCampaignParams } from './campaign-params';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
+import { PixieHogMythic } from './pixiehog-mythic';
 import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerce-spec/transformer-map';
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
@@ -61,13 +62,18 @@ register(async (extensionApi) => {
 
   const activeEvents = [...new Set([...settingObjectEvents, ...trackedEventsSetting])];
   const { posthog_api_key, posthog_api_host } = settings;
-  if (!posthog_api_key) {
-    throw new Error('ph_project_api_key is undefined');
+  // Mythic is a peer sink alongside PostHog (dual-sink). Either or both may be configured.
+  const mythicApiKey = String(settings.mythic_api_key || '').trim();
+  const mythicApiHost = String(settings.mythic_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
+  const mythicEnabled = String(settings.mythic_enabled || '') == 'true' && !!mythicApiKey;
+  if (!posthog_api_key && !mythicEnabled) {
+    throw new Error('No analytics provider configured (PostHog or Mythic)');
   }
   const { firstTouchCampaignParams, lastTouchCampaignParams } = calculateCampaignParams(init.context.document.location.href)
   let customerPrivacyStatus: CustomerPrivacyPayload['customerPrivacy'] = init.customerPrivacy;
-  const POSTHOG_WINDOW_KEY = `ph_${posthog_api_key}_window_id`;
-  const POSTHOG_KEY = `ph_${posthog_api_key}_posthog`;
+  const STORAGE_BASE = posthog_api_key || mythicApiKey;
+  const POSTHOG_WINDOW_KEY = `ph_${STORAGE_BASE}_window_id`;
+  const POSTHOG_KEY = `ph_${STORAGE_BASE}_posthog`;
 
   async function getPostHogLocalStorage(): Promise<string | null> { 
     const webPostHogPersistedString = await localStorage.getItem(POSTHOG_KEY);
@@ -170,20 +176,24 @@ register(async (extensionApi) => {
   }
 
   const globalDistinctId = await resolveDistinctId()
-  const posthog = new PixieHogPostHog(posthog_api_key, {
-    host: posthog_api_host,
-    persistence: 'memory',
-    flushAt: 10,
-    flushInterval: 100,
-    bootstrap: {
-      distinctId: globalDistinctId,
-      isIdentifiedId: false,
-    },
-  });
+  const posthog = posthog_api_key
+    ? new PixieHogPostHog(posthog_api_key, {
+        host: posthog_api_host,
+        persistence: 'memory',
+        flushAt: 10,
+        flushInterval: 100,
+        bootstrap: {
+          distinctId: globalDistinctId,
+          isIdentifiedId: false,
+        },
+      })
+    : null;
+  const mythic = mythicEnabled ? new PixieHogMythic({ host: mythicApiHost, apiKey: mythicApiKey }) : null;
 
   async function calculateFeatureFlags() {
   // if this fails we move on
     try {
+      if (!posthog) return {};
       const flags =  await posthog.getFeatureFlags() || {}
       const keyedFlags = Object.entries(flags).sort((a, b) => a[0].localeCompare(b[0]))
       return {
@@ -212,8 +222,24 @@ register(async (extensionApi) => {
     properties: Record<string, any>,
     options: Record<string, any>,
   ) {
-    await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
+    if (posthog) {
+      await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
+    }
+    if (mythic) {
+      await mythic.capture(distinctId, eventName, properties, options);
+    }
     await broadcast(eventName, properties);
+  }
+
+  // Fan an identify out to every active sink. `prevDistinctId` is the anonymous
+  // id being aliased to the known id (email) so Mythic can stitch the profile.
+  async function identifyAll(id: string, prevDistinctId: string | null) {
+    if (posthog) {
+      await posthog.identify(id);
+    }
+    if (mythic) {
+      await mythic.identify(id, prevDistinctId && prevDistinctId !== id ? prevDistinctId : null, { email: id });
+    }
   }
 
   const anonymous: boolean = (() =>{
@@ -349,7 +375,7 @@ register(async (extensionApi) => {
 
   if (init.data.customer?.email && anonymous == false && globalDistinctId != init.data.customer.email) {
     await setDistinctId(init.data.customer?.email)
-    await posthog.identify(init.data.customer?.email)
+    await identifyAll(init.data.customer.email, globalDistinctId)
   }
 
   const resolveEventEcommerceName = (name: string) => {
@@ -446,7 +472,7 @@ register(async (extensionApi) => {
         const email = event.data.checkout.email
         if (email && anonymous == false && distinctId != email) {
           await setDistinctId(email)
-          await posthog.identify(email)
+          await identifyAll(email, distinctId)
         }
       
       })
@@ -732,10 +758,10 @@ register(async (extensionApi) => {
       });
       if (email && anonymous == false && distinctId != email) {
         await setDistinctId(email)
-        await posthog.identify(email)
+        await identifyAll(email, distinctId)
       }
     })
 
-    
+
   );
 });

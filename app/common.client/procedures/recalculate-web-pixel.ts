@@ -24,6 +24,9 @@ export async function recalculateWebPixel(): Promise<
     | undefined;
   const posthogEcommerceSpec = response.currentAppInstallation.web_pixel_posthog_ecommerce_spec?.value == 'true'
   const dataLayerEnabled = response.currentAppInstallation.datalayer_enabled?.value == 'true'
+  const mythicApiKey = response.currentAppInstallation.mythic_api_key?.value
+  const mythicApiHost = response.currentAppInstallation.mythic_api_host?.value
+  const mythicEnabled = response.currentAppInstallation.mythic_enabled?.value == 'true'
   type ValueOf<T> = T[keyof T];
   const dataCollectionStrategyKey = response.currentAppInstallation.data_collection_strategy
     ?.value as ValueOf<DataCollectionStrategy>;
@@ -44,6 +47,9 @@ export async function recalculateWebPixel(): Promise<
     }),
     posthog_ecommerce_spec: !!posthogEcommerceSpec,
     datalayer_enabled: !!dataLayerEnabled,
+    ...(mythicApiKey && { mythic_api_key: mythicApiKey }),
+    ...(mythicApiHost && { mythic_api_host: mythicApiHost }),
+    mythic_enabled: !!mythicEnabled,
   } as WebPixelSettings);
 
   if (!webPixelFeatureToggle) {

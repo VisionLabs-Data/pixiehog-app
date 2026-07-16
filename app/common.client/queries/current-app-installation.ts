@@ -16,6 +16,9 @@ export const queryCurrentAppInstallation = async () => {
         $webPixelTrackedEvents: String!
         $webPixelPostHogEcommerceSpecKey: String!
         $dataLayerEnabledKey: String!
+        $mythicApiKeyKey: String!
+        $mythicApiHostKey: String!
+        $mythicEnabledKey: String!
       ) {
         currentAppInstallation {
           id
@@ -81,6 +84,22 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
+          mythic_api_key: metafield(namespace: $namespace, key: $mythicApiKeyKey) {
+            key
+            value
+            type
+          },
+          mythic_api_host: metafield(namespace: $namespace, key: $mythicApiHostKey) {
+            key
+            value
+            type
+          },
+          mythic_enabled: metafield(namespace: $namespace, key: $mythicEnabledKey) {
+            key
+            jsonValue
+            value
+            type
+          },
         }
       }
     `,
@@ -97,6 +116,9 @@ export const queryCurrentAppInstallation = async () => {
         webPixelTrackedEvents: Constant.METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS,
         webPixelPostHogEcommerceSpecKey: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
         dataLayerEnabledKey: Constant.METAFIELD_KEY_DATALAYER_ENABLED,
+        mythicApiKeyKey: Constant.METAFIELD_KEY_MYTHIC_API_KEY,
+        mythicApiHostKey: Constant.METAFIELD_KEY_MYTHIC_API_HOST,
+        mythicEnabledKey: Constant.METAFIELD_KEY_MYTHIC_ENABLED,
       },
     }
   );

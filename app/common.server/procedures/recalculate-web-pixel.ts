@@ -20,6 +20,9 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
   
   const posthogEcommerceSpec = currentAppInstallation.web_pixel_posthog_ecommerce_spec?.value == 'true'
   const dataLayerEnabled = currentAppInstallation.datalayer_enabled?.value == 'true'
+  const mythicApiKey = currentAppInstallation.mythic_api_key?.value
+  const mythicApiHost = currentAppInstallation.mythic_api_host?.value
+  const mythicEnabled = currentAppInstallation.mythic_enabled?.value == 'true'
 
   const webPixelFeatureToggle = currentAppInstallation.web_pixel_feature_toggle?.jsonValue == true
   const dtoResult = WebPixelSettingsSchema.safeParse({
@@ -37,6 +40,9 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     }),
     posthog_ecommerce_spec: !!posthogEcommerceSpec,
     datalayer_enabled: !!dataLayerEnabled,
+    ...(mythicApiKey && { mythic_api_key: mythicApiKey }),
+    ...(mythicApiHost && { mythic_api_host: mythicApiHost }),
+    mythic_enabled: !!mythicEnabled,
   } as WebPixelSettings);
   if (!webPixelFeatureToggle) {
     if (!shopifyWebPixel?.id) {
@@ -59,8 +65,8 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     return { status: 'disconnected' };
   }
 
-  const { posthog_api_key, ...eventsSettings } = dtoResult.data;
-  
+  const { posthog_api_key, mythic_api_key, mythic_api_host, mythic_enabled, ...eventsSettings } = dtoResult.data;
+
   const eventsSettingsValues = Object.values(eventsSettings);
   const allEventsDisabled = eventsSettingsValues.every((value) => value == 'false');
   if (allEventsDisabled) {

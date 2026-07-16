@@ -47,3 +47,18 @@ type = "single_line_text_field"
 name = "Toggle GTM dataLayer"
 description = "Toggle GTM dataLayer broadcast"
 type = "single_line_text_field"
+
+[settings.fields.mythic_enabled]
+name = "Enable Mythic"
+description = "Forward events to Mythic Analytics"
+type = "single_line_text_field"
+
+[settings.fields.mythic_api_key]
+name = "Mythic Publishable Key"
+description = "mythic_api_key"
+type = "single_line_text_field"
+
+[settings.fields.mythic_api_host]
+name = "Mythic API Host"
+description = "mythic_api_host"
+type = "single_line_text_field"
