@@ -1,18 +1,18 @@
 /**
- * Pure transform: Shopify order/refund webhook payload -> Mythic server event.
+ * Pure transform: Shopify order/refund webhook payload -> Iris server event.
  *
  * These are the AUTHORITATIVE conversion signals (server-to-server, can't be
  * blocked by the browser). They reuse the Segment/PostHog ecommerce event names
  * so they line up with the client-side pixel's `Order Completed` etc.
  *
  * Each event carries a STABLE `uuid` derived from the Shopify id so webhook
- * re-deliveries dedupe on Mythic's side.
- * ponytail: no cross-source dedupe vs the browser pixel — Mythic treats the
+ * re-deliveries dedupe on Iris's side.
+ * ponytail: no cross-source dedupe vs the browser pixel — Iris treats the
  * server event as authoritative; suppress the client `checkout_completed` if
  * you need strict one-count-per-order.
  */
 
-export interface MythicServerEvent {
+export interface IrisServerEvent {
   event: string;
   distinct_id: string;
   uuid: string;
@@ -61,7 +61,7 @@ function personSet(order: any): Record<string, unknown> | undefined {
  * Returns null for topics we don't map (caller skips forwarding).
  * `topic` is the Shopify webhook topic, e.g. "ORDERS_CREATE" or "orders/create".
  */
-export function orderToMythicEvent(topic: string, payload: any): MythicServerEvent | null {
+export function orderToIrisEvent(topic: string, payload: any): IrisServerEvent | null {
   const t = String(topic).toUpperCase().replace('/', '_');
 
   if (t === 'ORDERS_CREATE') {

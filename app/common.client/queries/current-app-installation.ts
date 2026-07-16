@@ -16,9 +16,9 @@ export const queryCurrentAppInstallation = async () => {
         $webPixelTrackedEvents: String!
         $webPixelPostHogEcommerceSpecKey: String!
         $dataLayerEnabledKey: String!
-        $mythicApiKeyKey: String!
-        $mythicApiHostKey: String!
-        $mythicEnabledKey: String!
+        $irisApiKeyKey: String!
+        $irisApiHostKey: String!
+        $irisEnabledKey: String!
       ) {
         currentAppInstallation {
           id
@@ -84,17 +84,17 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
-          mythic_api_key: metafield(namespace: $namespace, key: $mythicApiKeyKey) {
+          iris_api_key: metafield(namespace: $namespace, key: $irisApiKeyKey) {
             key
             value
             type
           },
-          mythic_api_host: metafield(namespace: $namespace, key: $mythicApiHostKey) {
+          iris_api_host: metafield(namespace: $namespace, key: $irisApiHostKey) {
             key
             value
             type
           },
-          mythic_enabled: metafield(namespace: $namespace, key: $mythicEnabledKey) {
+          iris_enabled: metafield(namespace: $namespace, key: $irisEnabledKey) {
             key
             jsonValue
             value
@@ -116,9 +116,9 @@ export const queryCurrentAppInstallation = async () => {
         webPixelTrackedEvents: Constant.METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS,
         webPixelPostHogEcommerceSpecKey: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
         dataLayerEnabledKey: Constant.METAFIELD_KEY_DATALAYER_ENABLED,
-        mythicApiKeyKey: Constant.METAFIELD_KEY_MYTHIC_API_KEY,
-        mythicApiHostKey: Constant.METAFIELD_KEY_MYTHIC_API_HOST,
-        mythicEnabledKey: Constant.METAFIELD_KEY_MYTHIC_ENABLED,
+        irisApiKeyKey: Constant.METAFIELD_KEY_IRIS_API_KEY,
+        irisApiHostKey: Constant.METAFIELD_KEY_IRIS_API_HOST,
+        irisEnabledKey: Constant.METAFIELD_KEY_IRIS_ENABLED,
       },
     }
   );

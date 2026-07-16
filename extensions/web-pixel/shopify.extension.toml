@@ -48,17 +48,17 @@ name = "Toggle GTM dataLayer"
 description = "Toggle GTM dataLayer broadcast"
 type = "single_line_text_field"
 
-[settings.fields.mythic_enabled]
-name = "Enable Mythic"
-description = "Forward events to Mythic Analytics"
+[settings.fields.iris_enabled]
+name = "Enable Iris"
+description = "Forward events to Iris Analytics"
 type = "single_line_text_field"
 
-[settings.fields.mythic_api_key]
-name = "Mythic Publishable Key"
-description = "mythic_api_key"
+[settings.fields.iris_api_key]
+name = "Iris Publishable Key"
+description = "iris_api_key"
 type = "single_line_text_field"
 
-[settings.fields.mythic_api_host]
-name = "Mythic API Host"
-description = "mythic_api_host"
+[settings.fields.iris_api_host]
+name = "Iris API Host"
+description = "iris_api_host"
 type = "single_line_text_field"

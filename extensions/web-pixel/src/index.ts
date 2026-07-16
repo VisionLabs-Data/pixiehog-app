@@ -9,7 +9,7 @@ import { calculateCampaignParams } from './campaign-params';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
-import { PixieHogMythic } from './pixiehog-mythic';
+import { PixieHogIris } from './pixiehog-iris';
 import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerce-spec/transformer-map';
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
@@ -62,16 +62,16 @@ register(async (extensionApi) => {
 
   const activeEvents = [...new Set([...settingObjectEvents, ...trackedEventsSetting])];
   const { posthog_api_key, posthog_api_host } = settings;
-  // Mythic is a peer sink alongside PostHog (dual-sink). Either or both may be configured.
-  const mythicApiKey = String(settings.mythic_api_key || '').trim();
-  const mythicApiHost = String(settings.mythic_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
-  const mythicEnabled = String(settings.mythic_enabled || '') == 'true' && !!mythicApiKey;
-  if (!posthog_api_key && !mythicEnabled) {
-    throw new Error('No analytics provider configured (PostHog or Mythic)');
+  // Iris is a peer sink alongside PostHog (dual-sink). Either or both may be configured.
+  const irisApiKey = String(settings.iris_api_key || '').trim();
+  const irisApiHost = String(settings.iris_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
+  const irisEnabled = String(settings.iris_enabled || '') == 'true' && !!irisApiKey;
+  if (!posthog_api_key && !irisEnabled) {
+    throw new Error('No analytics provider configured (PostHog or Iris)');
   }
   const { firstTouchCampaignParams, lastTouchCampaignParams } = calculateCampaignParams(init.context.document.location.href)
   let customerPrivacyStatus: CustomerPrivacyPayload['customerPrivacy'] = init.customerPrivacy;
-  const STORAGE_BASE = posthog_api_key || mythicApiKey;
+  const STORAGE_BASE = posthog_api_key || irisApiKey;
   const POSTHOG_WINDOW_KEY = `ph_${STORAGE_BASE}_window_id`;
   const POSTHOG_KEY = `ph_${STORAGE_BASE}_posthog`;
 
@@ -188,7 +188,7 @@ register(async (extensionApi) => {
         },
       })
     : null;
-  const mythic = mythicEnabled ? new PixieHogMythic({ host: mythicApiHost, apiKey: mythicApiKey }) : null;
+  const iris = irisEnabled ? new PixieHogIris({ host: irisApiHost, apiKey: irisApiKey }) : null;
 
   async function calculateFeatureFlags() {
   // if this fails we move on
@@ -225,20 +225,20 @@ register(async (extensionApi) => {
     if (posthog) {
       await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
     }
-    if (mythic) {
-      await mythic.capture(distinctId, eventName, properties, options);
+    if (iris) {
+      await iris.capture(distinctId, eventName, properties, options);
     }
     await broadcast(eventName, properties);
   }
 
   // Fan an identify out to every active sink. `prevDistinctId` is the anonymous
-  // id being aliased to the known id (email) so Mythic can stitch the profile.
+  // id being aliased to the known id (email) so Iris can stitch the profile.
   async function identifyAll(id: string, prevDistinctId: string | null) {
     if (posthog) {
       await posthog.identify(id);
     }
-    if (mythic) {
-      await mythic.identify(id, prevDistinctId && prevDistinctId !== id ? prevDistinctId : null, { email: id });
+    if (iris) {
+      await iris.identify(id, prevDistinctId && prevDistinctId !== id ? prevDistinctId : null, { email: id });
     }
   }
 

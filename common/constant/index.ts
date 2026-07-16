@@ -11,9 +11,9 @@ export class Constant {
   static readonly METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS = "tracked_events"
   static readonly METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC = 'web_pixel_posthog_ecommerce_spec'
   static readonly METAFIELD_KEY_DATALAYER_ENABLED = 'datalayer_enabled'
-  static readonly METAFIELD_KEY_MYTHIC_API_KEY = 'mythic_api_key'
-  static readonly METAFIELD_KEY_MYTHIC_API_HOST = 'mythic_api_host'
-  static readonly METAFIELD_KEY_MYTHIC_ENABLED = 'mythic_enabled'
-  static readonly MYTHIC_DEFAULT_API_HOST = 'https://mythic-analytics.gulp.workers.dev'
+  static readonly METAFIELD_KEY_IRIS_API_KEY = 'iris_api_key'
+  static readonly METAFIELD_KEY_IRIS_API_HOST = 'iris_api_host'
+  static readonly METAFIELD_KEY_IRIS_ENABLED = 'iris_enabled'
+  static readonly IRIS_DEFAULT_API_HOST = 'https://mythic-analytics.gulp.workers.dev'
   static readonly SHOPIFY_API_VERSION = '2024-10'
 }

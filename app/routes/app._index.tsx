@@ -17,7 +17,7 @@ import type { WebPixelSettingChoice } from './app.web-pixel-settings/interface/s
 import { defaultWebPixelSettings } from './app.web-pixel-settings/default-web-pixel-settings';
 import type { PosthogApiHost} from 'common/dto/posthog-api-host.dto';
 import { PosthogApiHostSchema, posthogApiHostPrimitive } from 'common/dto/posthog-api-host.dto';
-import { mythicApiKeyPrimitive, mythicApiHostPrimitive } from '../../common/dto/mythic-settings.dto';
+import { irisApiKeyPrimitive, irisApiHostPrimitive } from '../../common/dto/iris-settings.dto';
 import { urlWithShopParam } from '../../common/utils';
 import type { DataCollectionStrategy} from 'common/dto/data-collection-stratergy';
 import { DataCollectionStrategySchema} from 'common/dto/data-collection-stratergy';
@@ -150,41 +150,41 @@ export const clientAction = async ({
       value: dtoResultPosthogApiHost.data.posthog_api_host?.toString(),
     })
   }
-  // mythic settings (coexists with posthog — either/both may be configured)
-  const mythicEnabled = payload.mythic_enabled === true || payload.mythic_enabled === 'true';
-  const parsedMythicKey = mythicApiKeyPrimitive.safeParse(payload.mythic_api_key ?? '');
-  if (!parsedMythicKey.success) {
-    return { ok: false, message: parsedMythicKey.error.flatten().formErrors.join(' - ') || 'invalid Mythic key' };
+  // iris settings (coexists with posthog — either/both may be configured)
+  const irisEnabled = payload.iris_enabled === true || payload.iris_enabled === 'true';
+  const parsedIrisKey = irisApiKeyPrimitive.safeParse(payload.iris_api_key ?? '');
+  if (!parsedIrisKey.success) {
+    return { ok: false, message: parsedIrisKey.error.flatten().formErrors.join(' - ') || 'invalid Iris key' };
   }
-  const parsedMythicHost = mythicApiHostPrimitive.safeParse(payload.mythic_api_host ?? '');
-  if (!parsedMythicHost.success) {
-    return { ok: false, message: parsedMythicHost.error.flatten().formErrors.join(' - ') || 'invalid Mythic host' };
+  const parsedIrisHost = irisApiHostPrimitive.safeParse(payload.iris_api_host ?? '');
+  if (!parsedIrisHost.success) {
+    return { ok: false, message: parsedIrisHost.error.flatten().formErrors.join(' - ') || 'invalid Iris host' };
   }
   metafieldsSetData.push({
-    key: Constant.METAFIELD_KEY_MYTHIC_ENABLED,
+    key: Constant.METAFIELD_KEY_IRIS_ENABLED,
     namespace: Constant.METAFIELD_NAMESPACE,
     ownerId: appId,
     type: 'boolean',
-    value: String(mythicEnabled),
+    value: String(irisEnabled),
   });
   metafieldsSetData.push({
-    key: Constant.METAFIELD_KEY_MYTHIC_API_HOST,
+    key: Constant.METAFIELD_KEY_IRIS_API_HOST,
     namespace: Constant.METAFIELD_NAMESPACE,
     ownerId: appId,
     type: 'single_line_text_field',
-    value: parsedMythicHost.data || Constant.MYTHIC_DEFAULT_API_HOST,
+    value: parsedIrisHost.data || Constant.IRIS_DEFAULT_API_HOST,
   });
-  if (parsedMythicKey.data === '') {
+  if (parsedIrisKey.data === '') {
     await clientMetafieldsDelete([
-      { key: Constant.METAFIELD_KEY_MYTHIC_API_KEY, namespace: Constant.METAFIELD_NAMESPACE, ownerId: appId },
+      { key: Constant.METAFIELD_KEY_IRIS_API_KEY, namespace: Constant.METAFIELD_NAMESPACE, ownerId: appId },
     ]);
   } else {
     metafieldsSetData.push({
-      key: Constant.METAFIELD_KEY_MYTHIC_API_KEY,
+      key: Constant.METAFIELD_KEY_IRIS_API_KEY,
       namespace: Constant.METAFIELD_NAMESPACE,
       ownerId: appId,
       type: 'single_line_text_field',
-      value: parsedMythicKey.data,
+      value: parsedIrisKey.data,
     });
   }
 
@@ -401,13 +401,13 @@ export default function Index() {
     [],
   );
 
-  // mythic (coexists with posthog)
-  const mythicApiKeyInitialState = currentAppInstallation.mythic_api_key?.value || '';
-  const [mythicApiKey, setMythicApiKey] = useState(mythicApiKeyInitialState);
-  const mythicApiHostInitialState = currentAppInstallation.mythic_api_host?.value || Constant.MYTHIC_DEFAULT_API_HOST;
-  const [mythicApiHost, setMythicApiHost] = useState(mythicApiHostInitialState);
-  const mythicEnabledInitialState = currentAppInstallation.mythic_enabled?.value === 'true';
-  const [mythicEnabled, setMythicEnabled] = useState(mythicEnabledInitialState);
+  // iris (coexists with posthog)
+  const irisApiKeyInitialState = currentAppInstallation.iris_api_key?.value || '';
+  const [irisApiKey, setIrisApiKey] = useState(irisApiKeyInitialState);
+  const irisApiHostInitialState = currentAppInstallation.iris_api_host?.value || Constant.IRIS_DEFAULT_API_HOST;
+  const [irisApiHost, setIrisApiHost] = useState(irisApiHostInitialState);
+  const irisEnabledInitialState = currentAppInstallation.iris_enabled?.value === 'true';
+  const [irisEnabled, setIrisEnabled] = useState(irisEnabledInitialState);
 
   //data collection strategy
   type ValueOf<T> = T[keyof T];
@@ -492,13 +492,13 @@ export default function Index() {
     if (posthogApiHost != "custom" && PosthogApiHostInitialState != posthogApiHost) {
       return true
     }
-    if (mythicApiKeyInitialState != mythicApiKey) {
+    if (irisApiKeyInitialState != irisApiKey) {
       return true
     }
-    if (mythicApiHostInitialState != mythicApiHost) {
+    if (irisApiHostInitialState != irisApiHost) {
       return true
     }
-    if (mythicEnabledInitialState != mythicEnabled) {
+    if (irisEnabledInitialState != irisEnabled) {
       return true
     }
     return false
@@ -514,12 +514,12 @@ export default function Index() {
     posthogApiHost,
     PosthogApiHostInitialState,
     posthogApiHostCustom,
-    mythicApiKeyInitialState,
-    mythicApiKey,
-    mythicApiHostInitialState,
-    mythicApiHost,
-    mythicEnabledInitialState,
-    mythicEnabled
+    irisApiKeyInitialState,
+    irisApiKey,
+    irisApiHostInitialState,
+    irisApiHost,
+    irisEnabledInitialState,
+    irisEnabled
   ])
 
 
@@ -570,9 +570,9 @@ export default function Index() {
         js_web_posthog_feature_toggle: jsWebPosthogFeatureEnabled,
         web_pixel_feature_toggle: webPixelFeatureEnabled,
         data_collection_strategy: dataCollectionStrategy,
-        mythic_api_key: mythicApiKey,
-        mythic_api_host: mythicApiHost,
-        mythic_enabled: mythicEnabled,
+        iris_api_key: irisApiKey,
+        iris_api_host: irisApiHost,
+        iris_enabled: irisEnabled,
       },
       {
         method: 'POST',
@@ -758,15 +758,15 @@ export default function Index() {
             )}
           </div>
 
-          {/* ── Connect Mythic (optional, coexists with PostHog) ── */}
+          {/* ── Connect Iris (optional, coexists with PostHog) ── */}
           <div className={styles.setupCard}>
             <div className={styles.cardHeader}>
               <div className={styles.stepBadge}>2</div>
-              <h2 className={styles.stepTitle}>Connect Mythic</h2>
+              <h2 className={styles.stepTitle}>Connect Iris</h2>
             </div>
 
             <p className={styles.stepDesc}>
-              Forward the same storefront events to Mythic Analytics. Runs alongside PostHog — enable either or
+              Forward the same storefront events to Iris Analytics. Runs alongside PostHog — enable either or
               both. Server-side order conversions are forwarded automatically.
             </p>
 
@@ -774,22 +774,22 @@ export default function Index() {
               <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={mythicEnabled}
-                  onChange={(e) => setMythicEnabled(e.target.checked)}
+                  checked={irisEnabled}
+                  onChange={(e) => setIrisEnabled(e.target.checked)}
                 />
-                Enable Mythic
+                Enable Iris
               </label>
             </div>
 
             <div className={styles.fieldGroup}>
               <div className={styles.fieldLabelRow}>
-                <label className={styles.fieldLabel}>Mythic Publishable Key</label>
+                <label className={styles.fieldLabel}>Iris Publishable Key</label>
               </div>
               <div className={styles.fieldInput}>
                 <input
                   type="text"
-                  value={mythicApiKey}
-                  onChange={(e) => setMythicApiKey(e.target.value)}
+                  value={irisApiKey}
+                  onChange={(e) => setIrisApiKey(e.target.value)}
                   placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
                   autoComplete="off"
                 />
@@ -799,14 +799,14 @@ export default function Index() {
 
             <div className={styles.fieldGroup}>
               <div className={styles.fieldLabelRow}>
-                <label className={styles.fieldLabel}>Mythic API Host</label>
+                <label className={styles.fieldLabel}>Iris API Host</label>
               </div>
               <div className={styles.fieldInput}>
                 <input
                   type="url"
-                  value={mythicApiHost}
-                  onChange={(e) => setMythicApiHost(e.target.value)}
-                  placeholder={Constant.MYTHIC_DEFAULT_API_HOST}
+                  value={irisApiHost}
+                  onChange={(e) => setIrisApiHost(e.target.value)}
+                  placeholder={Constant.IRIS_DEFAULT_API_HOST}
                   autoComplete="off"
                 />
               </div>

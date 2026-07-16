@@ -5,13 +5,13 @@ import { DataCollectionStrategySchema } from './data-collection-stratergy';
 import { WebPixelTrackedEventsSchema } from './web-pixel-tracked-events.dto';
 import { WebPixelPostHogEcommerceSpecSchema } from './web-pixel-posthog-ecommerce-spec';
 import { WebPixelDataLayerEnabledSchema } from './web-pixel-datalayer-enabled';
-import { MythicSettingsSchema } from './mythic-settings.dto';
+import { IrisSettingsSchema } from './iris-settings.dto';
 
 export const WebPixelSettingsSchema = PosthogApiKeySchema.merge(PosthogApiHostSchema)
   .merge(DataCollectionStrategySchema)
   .merge(WebPixelTrackedEventsSchema)
   .merge(WebPixelPostHogEcommerceSpecSchema)
   .merge(WebPixelDataLayerEnabledSchema)
-  .merge(MythicSettingsSchema);
+  .merge(IrisSettingsSchema);
 
 export type WebPixelSettings = z.infer<typeof WebPixelSettingsSchema>;

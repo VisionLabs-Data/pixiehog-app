@@ -1,31 +1,31 @@
 /**
- * Minimal Mythic Analytics sink for the Shopify Web Pixel sandbox.
+ * Minimal Iris Analytics sink for the Shopify Web Pixel sandbox.
  *
- * Mythic's ingestion (`POST /e?key=pk_xxx`) is PostHog-shaped — it accepts the
+ * Iris's ingestion (`POST /e?key=pk_xxx`) is PostHog-shaped — it accepts the
  * exact `{ event, distinct_id, timestamp, properties }` payload the pixel
  * already builds for PostHog, including `$set` / `$set_once` person properties.
- * So we reuse the transformed event verbatim and just POST it to Mythic.
+ * So we reuse the transformed event verbatim and just POST it to Iris.
  *
  * ponytail: fire-and-forget per event with keepalive — no batching/flush timers.
  * Per-session event volume is small; add a batch queue only if that changes.
  */
 
-export interface MythicClientOptions {
+export interface IrisClientOptions {
   host: string;
   apiKey: string; // pk_xxxx
   libVersion?: string;
 }
 
-export interface MythicCaptureOptions {
+export interface IrisCaptureOptions {
   uuid?: string;
   timestamp?: Date | number;
 }
 
-export class PixieHogMythic {
+export class PixieHogIris {
   private readonly endpoint: string;
   private readonly libVersion: string;
 
-  constructor(opts: MythicClientOptions) {
+  constructor(opts: IrisClientOptions) {
     const host = (opts.host || '').replace(/\/+$/, '');
     this.endpoint = `${host}/e?key=${encodeURIComponent(opts.apiKey)}`;
     this.libVersion = opts.libVersion || '1.0.0';
@@ -41,7 +41,7 @@ export class PixieHogMythic {
     distinctId: string,
     event: string,
     properties: Record<string, any>,
-    options?: MythicCaptureOptions
+    options?: IrisCaptureOptions
   ): Promise<void> {
     const body = {
       event,
@@ -68,7 +68,7 @@ export class PixieHogMythic {
   }
 
   /**
-   * Mirror PostHog's `$identify` so Mythic's identity graph can alias the
+   * Mirror PostHog's `$identify` so Iris's identity graph can alias the
    * anonymous distinct_id to the known one (email).
    */
   async identify(

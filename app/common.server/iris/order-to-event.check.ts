@@ -1,13 +1,13 @@
 /**
- * Runnable check for orderToMythicEvent.
- * Run: node app/common.server/mythic/order-to-event.check.ts
+ * Runnable check for orderToIrisEvent.
+ * Run: node app/common.server/iris/order-to-event.check.ts
  * (Node 22.18+ strips TS types natively.)
  */
 import assert from 'node:assert';
-import { orderToMythicEvent } from './order-to-event.ts';
+import { orderToIrisEvent } from './order-to-event.ts';
 
 // --- orders/create ---
-const created = orderToMythicEvent('ORDERS_CREATE', {
+const created = orderToIrisEvent('ORDERS_CREATE', {
   id: 12345,
   order_number: 1001,
   email: 'buyer@example.com',
@@ -35,12 +35,12 @@ assert.equal((created.properties.products as any[]).length, 1);
 assert.equal((created.properties.products as any[])[0].price, 30);
 
 // --- anonymous order falls back to synthetic distinct_id, no $set ---
-const anon = orderToMythicEvent('orders/create', { id: 9, line_items: [] })!;
+const anon = orderToIrisEvent('orders/create', { id: 9, line_items: [] })!;
 assert.equal(anon.distinct_id, 'shopify-order-9');
 assert.equal(anon.properties.$set, undefined);
 
 // --- orders/cancelled ---
-const cancelled = orderToMythicEvent('ORDERS_CANCELLED', {
+const cancelled = orderToIrisEvent('ORDERS_CANCELLED', {
   id: 55,
   cancelled_at: '2026-07-15T12:00:00Z',
   total_price: '10.00',
@@ -52,7 +52,7 @@ assert.equal(cancelled.uuid, 'shopify-order-cancel-55');
 assert.equal(cancelled.properties.cancel_reason, 'customer');
 
 // --- refunds/create sums transactions ---
-const refund = orderToMythicEvent('REFUNDS_CREATE', {
+const refund = orderToIrisEvent('REFUNDS_CREATE', {
   id: 777,
   order_id: 55,
   created_at: '2026-07-15T13:00:00Z',
@@ -64,6 +64,6 @@ assert.equal(refund.uuid, 'shopify-refund-777');
 assert.equal(refund.properties.total, 5);
 
 // --- unmapped topic returns null ---
-assert.equal(orderToMythicEvent('products/update', { id: 1 }), null);
+assert.equal(orderToIrisEvent('products/update', { id: 1 }), null);
 
 console.log('order-to-event.check.ts: all assertions passed');
