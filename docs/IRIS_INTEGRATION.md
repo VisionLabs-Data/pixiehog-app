@@ -49,7 +49,7 @@ Order and refund webhooks are the **authoritative** purchase signals — they ca
 be blocked by the storefront. VizHog forwards them to Iris's server ingest
 (`POST {host}/ingest`, `Authorization: Bearer pk_…`).
 
-| Shopify topic | Iris event | Stable `uuid` (dedupe key) |
+| Shopify topic | Iris event | Stable `uuid` |
 |---|---|---|
 | `orders/create` | `Order Completed` | `shopify-order-<id>` |
 | `orders/cancelled` | `Order Cancelled` | `shopify-order-cancel-<id>` |
@@ -63,10 +63,17 @@ has a customer, so Iris can resolve the purchase to a profile.
 The per-shop Iris key is read from the app-installation metafield at webhook
 time (the same value entered in the UI) — no separate credential store.
 
-**Dedupe note:** the stable `uuid` dedupes webhook re-deliveries. It does **not**
-dedupe the server `Order Completed` against the browser's `checkout_completed`.
-Iris treats the server event as authoritative; suppress the client
-`checkout_completed` if you need exactly one purchase per order.
+**Dedupe note — VERIFIED, and it is not what it looks like.** The stable `uuid`
+is a *dedupe key we supply*, not dedupe that happens. Iris does **not** dedupe on
+it today: `/ingest` publishes straight to Pub/Sub with no idempotency cache, and
+`mythic_events_decoded_mv` is a plain MergeTree (uuid is an ordinary column, not
+part of the sorting key or a ReplacingMergeTree version). So a Shopify webhook
+re-delivery — which Shopify does on any non-2xx, repeatedly over roughly 48
+hours — double-counts the order's revenue. Nor is the server `Order Completed`
+deduped
+against the browser's `checkout_completed`: that is a second count of the same
+purchase whenever both sinks are live. Until Iris dedupes by `uuid`, pick one
+purchase source per store.
 
 ## Identity resolution
 
@@ -74,6 +81,20 @@ The pixel keeps a single `distinct_id` (an anonymous UUID until a customer email
 is known, then the email). On identify it emits a Iris `$identify` event
 carrying `$anon_distinct_id` so Iris can alias the anonymous session to the
 known profile — the same primitive PostHog uses.
+
+**Session/device handoff to the storefront SDK.** Iris reads `$session_id`,
+`$device_id`, `$anon_distinct_id` and `$user_id` off the event *envelope*, not
+`properties` — so `pixiehog-iris.ts` lifts them out of the properties bag on the
+way out. And because the pixel's own session id lives in PostHog's namespace
+(a different value from the one the Iris JS SDK mints on the storefront), the
+pixel now reads the SDK's `mythic_session` / `mythic_device_id` /
+`mythic_distinct_id` from localStorage and re-points the Iris sink at them.
+Without that, one visit split into two sessions and two people — storefront
+browsing under the SDK's ids, cart and checkout under the pixel's — and the
+purchase session carried no landing page or UTMs, because the pixel only ever
+sees the checkout URL. PostHog's payload is unchanged. Falls back to the pixel's
+own ids if the merchant runs the SDK under a custom global name (storage prefix
+is then not `mythic_`).
 
 ## Where it lives
 

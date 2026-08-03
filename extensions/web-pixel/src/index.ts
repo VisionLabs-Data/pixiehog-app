@@ -216,6 +216,61 @@ register(async (extensionApi) => {
     localStorage,
   );
 
+  /**
+   * Iris identity handoff.
+   *
+   * The Iris JS SDK running on the storefront keeps its own ids in localStorage
+   * (`mythic_session` -> `{ id, ... }`, `mythic_device_id`, `mythic_distinct_id`
+   * — all JSON-encoded). The pixel's session id lives in PostHog's namespace and
+   * is a DIFFERENT value, so without this handoff one visit lands as two
+   * sessions and two people: storefront browsing under the SDK's ids, cart and
+   * checkout under ours. Worse, the purchase session then has no landing page or
+   * UTMs, because the pixel only sees the checkout URL.
+   *
+   * Shopify proxies `browser.localStorage` to the storefront document (the same
+   * mechanism that lets us read PostHog's `ph_*` keys), so the SDK's values are
+   * readable from the sandbox on both storefront and checkout pages.
+   *
+   * PostHog's payload is deliberately untouched — this only re-points the Iris
+   * sink. ponytail: assumes the default `mythic_` storage prefix; a merchant who
+   * sets a custom `__mythic_global_name` falls back to the pixel's own ids —
+   * still correct, just not stitched to the storefront session.
+   */
+  const IRIS_SDK_PREFIX = 'mythic_';
+
+  async function readIrisSdkValue<T>(key: string): Promise<T | null> {
+    try {
+      const raw = await localStorage.getItem(IRIS_SDK_PREFIX + key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+
+  async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
+    const [session, deviceId, sdkDistinctId] = await Promise.all([
+      readIrisSdkValue<{ id?: string }>('session'),
+      readIrisSdkValue<string>('device_id'),
+      readIrisSdkValue<string>('distinct_id'),
+    ]);
+    const sdkSessionId = str(session && typeof session === 'object' ? session.id : null);
+    const sdkDevice = str(deviceId);
+    // Once the visitor is known we key on the email — never downgrade that to an
+    // anonymous id just because the SDK has one.
+    const sdkAnon = distinctId.includes('@') ? null : str(sdkDistinctId);
+
+    return {
+      distinctId: sdkAnon || distinctId,
+      properties: {
+        ...properties,
+        ...(sdkSessionId ? { $session_id: sdkSessionId } : {}),
+        ...(sdkDevice ? { $device_id: sdkDevice } : {}),
+      },
+    };
+  }
+
   async function captureAndBroadcast(
     distinctId: string,
     eventName: string,
@@ -226,7 +281,8 @@ register(async (extensionApi) => {
       await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
     }
     if (iris) {
-      await iris.capture(distinctId, eventName, properties, options);
+      const env = await irisEnvelope(distinctId, properties);
+      await iris.capture(env.distinctId, eventName, env.properties, options);
     }
     await broadcast(eventName, properties);
   }
@@ -238,7 +294,12 @@ register(async (extensionApi) => {
       await posthog.identify(id);
     }
     if (iris) {
-      await iris.identify(id, prevDistinctId && prevDistinctId !== id ? prevDistinctId : null, { email: id });
+      // Alias the id Iris actually saw on the captures — the SDK's anonymous id
+      // when we adopted it, ours otherwise. Aliasing the wrong one leaves the
+      // browsing history stranded on a second person.
+      const env = await irisEnvelope(prevDistinctId || id, {});
+      const anon = env.distinctId !== id ? env.distinctId : null;
+      await iris.identify(id, anon, { email: id }, env.properties.$session_id);
     }
   }
 

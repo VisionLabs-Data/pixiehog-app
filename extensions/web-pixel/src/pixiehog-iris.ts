@@ -21,6 +21,23 @@ export interface IrisCaptureOptions {
   timestamp?: Date | number;
 }
 
+/**
+ * Iris reads the session/identity ids off the event ENVELOPE, not `properties`
+ * — its Tinybird decoder and identity-processor both look at the root. PostHog
+ * carries them inside `properties`, so lift them on the way out or the event
+ * lands session-less (no row in the sessions table, no device stitching).
+ */
+const ENVELOPE_KEYS = ['$session_id', '$device_id', '$anon_distinct_id', '$user_id'] as const;
+
+function envelopeIds(properties: Record<string, any>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of ENVELOPE_KEYS) {
+    const value = properties?.[key];
+    if (typeof value === 'string' && value !== '') out[key] = value;
+  }
+  return out;
+}
+
 export class PixieHogIris {
   private readonly endpoint: string;
   private readonly libVersion: string;
@@ -48,6 +65,7 @@ export class PixieHogIris {
       distinct_id: distinctId,
       timestamp: this.resolveTimestamp(options?.timestamp),
       ...(options?.uuid ? { uuid: options.uuid } : {}),
+      ...envelopeIds(properties),
       properties: {
         ...properties,
         $lib: 'vizhog-shopify',
@@ -74,10 +92,12 @@ export class PixieHogIris {
   async identify(
     distinctId: string,
     anonDistinctId: string | null,
-    setProps: Record<string, any>
+    setProps: Record<string, any>,
+    sessionId?: string
   ): Promise<void> {
     await this.capture(distinctId, '$identify', {
       ...(anonDistinctId ? { $anon_distinct_id: anonDistinctId } : {}),
+      ...(sessionId ? { $session_id: sessionId } : {}),
       $set: setProps,
     });
   }
