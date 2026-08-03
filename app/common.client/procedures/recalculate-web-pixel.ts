@@ -27,6 +27,7 @@ export async function recalculateWebPixel(): Promise<
   const irisApiKey = response.currentAppInstallation.iris_api_key?.value
   const irisApiHost = response.currentAppInstallation.iris_api_host?.value
   const irisEnabled = response.currentAppInstallation.iris_enabled?.value == 'true'
+  const irisJsEnabled = response.currentAppInstallation.iris_js_feature_toggle?.value == 'true'
   type ValueOf<T> = T[keyof T];
   const dataCollectionStrategyKey = response.currentAppInstallation.data_collection_strategy
     ?.value as ValueOf<DataCollectionStrategy>;
@@ -50,6 +51,7 @@ export async function recalculateWebPixel(): Promise<
     ...(irisApiKey && { iris_api_key: irisApiKey }),
     ...(irisApiHost && { iris_api_host: irisApiHost }),
     iris_enabled: !!irisEnabled,
+    iris_js_enabled: !!irisJsEnabled,
   } as WebPixelSettings);
 
   if (!webPixelFeatureToggle) {

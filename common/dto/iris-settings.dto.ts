@@ -14,10 +14,18 @@ export const irisApiHostPrimitive = z
 
 export const irisEnabledPrimitive = z.boolean().default(false);
 
+/**
+ * Whether the Iris SDK theme app embed is switched on. Not a setting the pixel
+ * acts on directly — it only tells the pixel whether waiting for the SDK's
+ * identity can pay off. See extensions/web-pixel/src/wait-for-sdk-identity.ts.
+ */
+export const irisJsEnabledPrimitive = z.boolean().default(false);
+
 export const IrisSettingsSchema = z.object({
   iris_api_key: irisApiKeyPrimitive,
   iris_api_host: irisApiHostPrimitive,
   iris_enabled: irisEnabledPrimitive,
+  iris_js_enabled: irisJsEnabledPrimitive,
 });
 
 export type IrisSettings = z.infer<typeof IrisSettingsSchema>;

@@ -62,3 +62,12 @@ type = "single_line_text_field"
 name = "Iris API Host"
 description = "iris_api_host"
 type = "single_line_text_field"
+
+# Mirrors the iris_js_feature_toggle metafield. The pixel needs to know whether
+# the Iris SDK theme embed is on, so it only waits for the SDK's identity when
+# there is an SDK coming — otherwise every first event on a shop without the
+# embed would pay the full timeout for nothing.
+[settings.fields.iris_js_enabled]
+name = "Iris SDK theme embed enabled"
+description = "iris_js_enabled"
+type = "single_line_text_field"

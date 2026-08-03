@@ -14,6 +14,7 @@ import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerc
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
+import { onceWaiter, shouldWaitForSdk } from './wait-for-sdk-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -67,6 +68,10 @@ register(async (extensionApi) => {
   const irisApiKey = String(settings.iris_api_key || '').trim();
   const irisApiHost = String(settings.iris_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
   const irisEnabled = String(settings.iris_enabled || '') == 'true' && !!irisApiKey;
+  // Only meaningful as "is an SDK expected on this page" — see the wait below.
+  // Tri-state on purpose: an absent setting means this pixel's stored settings
+  // predate the field, not that the embed is off.
+  const irisJsMaybeEnabled = shouldWaitForSdk(settings.iris_js_enabled);
   if (!posthog_api_key && !irisEnabled) {
     throw new Error('No analytics provider configured (PostHog or Iris)');
   }
@@ -259,7 +264,35 @@ register(async (extensionApi) => {
 
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
+  /**
+   * The pixel beats the SDK to the first event by ~156ms (measured), so without
+   * this the landing pageview — the one carrying the landing page and UTMs —
+   * went out under the pixel's own id while everything after it adopted the
+   * SDK's, splitting one visit across two people.
+   *
+   * Gated on iris_js_enabled: with no SDK theme embed there is nothing to wait
+   * for, and waiting would delay the first event of every visit for nothing.
+   * `onceWaiter` means at most one wait per page, however many events fire.
+   */
+  const awaitSdkIdentity = onceWaiter({
+    read: async () => str(await readIrisSdkValue<string>('distinct_id')),
+    // Guarded: if the sandbox ever lacks setTimeout this degrades to a tight
+    // loop of reads (each an async round trip to the document, so not a spin)
+    // rather than throwing out of irisEnvelope and killing Iris capture.
+    sleep: (ms) =>
+      new Promise<void>((resolve) => {
+        if (typeof setTimeout === 'function') {
+          setTimeout(resolve, ms);
+        } else {
+          resolve();
+        }
+      }),
+  });
+
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
+    if (irisJsMaybeEnabled) {
+      await awaitSdkIdentity();
+    }
     const [session, deviceId, sdkDistinctId] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
       readIrisSdkValue<string>('device_id'),

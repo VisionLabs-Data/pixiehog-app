@@ -23,6 +23,7 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
   const irisApiKey = currentAppInstallation.iris_api_key?.value
   const irisApiHost = currentAppInstallation.iris_api_host?.value
   const irisEnabled = currentAppInstallation.iris_enabled?.value == 'true'
+  const irisJsEnabled = currentAppInstallation.iris_js_feature_toggle?.value == 'true'
 
   const webPixelFeatureToggle = currentAppInstallation.web_pixel_feature_toggle?.jsonValue == true
   const dtoResult = WebPixelSettingsSchema.safeParse({
@@ -43,6 +44,7 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     ...(irisApiKey && { iris_api_key: irisApiKey }),
     ...(irisApiHost && { iris_api_host: irisApiHost }),
     iris_enabled: !!irisEnabled,
+    iris_js_enabled: !!irisJsEnabled,
   } as WebPixelSettings);
   if (!webPixelFeatureToggle) {
     if (!shopifyWebPixel?.id) {
@@ -76,7 +78,8 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     return { status: 'disconnected' };
   }
 
-  const { posthog_api_key, iris_api_key, iris_api_host, iris_enabled, ...eventsSettings } = dtoResult.data;
+  const { posthog_api_key, iris_api_key, iris_api_host, iris_enabled, iris_js_enabled, ...eventsSettings } =
+    dtoResult.data;
 
   const eventsSettingsValues = Object.values(eventsSettings);
   const allEventsDisabled = eventsSettingsValues.every((value) => value == 'false');
