@@ -35,12 +35,29 @@ import type { DataCollectionStrategy } from '../../../common/dto/data-collection
 import { shopifyKeys } from './keyoverrides';
 import { deriveDestinations } from '../../tracking-config';
 import type { TrackingInstallation } from '../../tracking-config';
+import { appEmbedStatus as clientAppEmbedStatus } from '../../common.client/procedures/app-embed-status';
 
 export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
   const response = await clientQueryCurrentAppInstallation();
   const webPixel = await queryWebPixel() || null;
-  
-  return { currentAppInstallation: response.currentAppInstallation, webPixel, shop: shopify.config.shop, };
+  // The theme app embeds are part of THIS source, so their activation state
+  // belongs here — the "Needs theme activation" badge on the My Tracking card
+  // links to this page, and used to arrive somewhere that never mentioned them.
+  // One extension, two blocks: same UUID, told apart by handle.
+  const themeExtensionUuid = window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID;
+  const [posthogEmbedActive, irisEmbedActive] = await Promise.all([
+    clientAppEmbedStatus(themeExtensionUuid, Constant.APP_POSTHOG_JS_WEB_THEME_APP_HANDLE),
+    clientAppEmbedStatus(themeExtensionUuid, Constant.APP_IRIS_JS_THEME_APP_HANDLE),
+  ]);
+
+  return {
+    currentAppInstallation: response.currentAppInstallation,
+    webPixel,
+    shop: shopify.config.shop,
+    themeExtensionUuid,
+    posthogEmbedActive: Boolean(posthogEmbedActive),
+    irisEmbedActive: Boolean(irisEmbedActive),
+  };
 };
 
 export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
@@ -111,9 +128,32 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
 export function HydrateFallback() {
   return <LoadingSpinner />;
 }
+
+/**
+ * Both app embed blocks of the app's single theme extension. Shopify allows one
+ * theme extension per app, so these are blocks inside it and share its
+ * registration UUID — the block handle is what tells them apart.
+ */
+const THEME_EMBEDS = [
+  {
+    handle: Constant.APP_POSTHOG_JS_WEB_THEME_APP_HANDLE,
+    name: 'PostHog JS',
+    detail: 'Session replay, surveys and experiments for PostHog.',
+    toggleKey: 'js_web_posthog_feature_toggle',
+    settingsUrl: '/app/js-web-posthog-settings',
+  },
+  {
+    handle: Constant.APP_IRIS_JS_THEME_APP_HANDLE,
+    name: 'Iris SDK',
+    detail: 'Session replay, autocapture, error tracking and web vitals for Iris.',
+    toggleKey: 'iris_js_feature_toggle',
+    settingsUrl: '/app/destinations/iris?step=sdk-config',
+  },
+] as const;
 export default function WebPixelEvents() {
   const fetcher = useFetcher();
-  const { currentAppInstallation, webPixel } = useLoaderData<typeof clientLoader>();
+  const { currentAppInstallation, webPixel, shop, themeExtensionUuid, posthogEmbedActive, irisEmbedActive } =
+    useLoaderData<typeof clientLoader>();
   const webPixelActualSettings = (webPixel?.settings as WebPixelSettings | undefined) || null
   const trackedEvents = (() =>  {
     try {
@@ -374,6 +414,56 @@ export default function WebPixelEvents() {
                   checked={checkedDataLayer}
                   onChange={handleChangeDataLayer}
                 />
+              </BlockStack>
+
+              <Divider />
+
+              {/* Theme app embeds belong to this source: they run in the
+                  storefront alongside the Web Pixel. The activation deeplink
+                  used to exist only inside Iris → JS SDK Config, so the
+                  "Needs theme activation" badge on My Tracking pointed here and
+                  then went nowhere. */}
+              <BlockStack gap="300">
+                <Text as="h3" variant="headingSm">
+                  Theme app embeds
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Optional scripts loaded by your theme, each switched on in two places: here in the
+                  app, and under <strong>App embeds</strong> in the theme editor. Both are needed —
+                  the Web Pixel above runs regardless.
+                </Text>
+                {THEME_EMBEDS.map((embed) => {
+                  const enabled = currentAppInstallation[embed.toggleKey]?.value === 'true';
+                  const active = embed.handle === Constant.APP_IRIS_JS_THEME_APP_HANDLE
+                    ? irisEmbedActive
+                    : posthogEmbedActive;
+                  return (
+                    <InlineStack key={embed.handle} align="space-between" blockAlign="center" wrap={false}>
+                      <BlockStack gap="050">
+                        <Text as="p" variant="bodyMd" fontWeight="medium">
+                          {embed.name}
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {embed.detail}{' '}
+                          <Link url={embed.settingsUrl}>Settings</Link>
+                        </Text>
+                      </BlockStack>
+                      <InlineStack gap="200" blockAlign="center" wrap={false}>
+                        <Badge tone={enabled && active ? 'success' : enabled ? 'warning' : undefined}>
+                          {!enabled ? 'Off in app' : active ? 'On' : 'Not activated in theme'}
+                        </Badge>
+                        {enabled && !active && themeExtensionUuid && (
+                          <Link
+                            url={`https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${themeExtensionUuid}/${embed.handle}`}
+                            target="_top"
+                          >
+                            Activate in theme
+                          </Link>
+                        )}
+                      </InlineStack>
+                    </InlineStack>
+                  );
+                })}
               </BlockStack>
 
               <Divider />
