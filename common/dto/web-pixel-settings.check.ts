@@ -70,6 +70,16 @@ assert(
   'iris_enabled=false must not count, even with a key saved',
 );
 
+// An empty host now parses, which is what lets PostHog be cleared. The flip side
+// is that "key set, host empty" also parses — a pixel that captures to nowhere
+// and reports nothing wrong — so the general step in
+// app/routes/app.destinations.$destination.tsx rejects that pairing explicitly.
+// This asserts the hole the schema leaves open, so the reason for that guard
+// doesn't get lost.
+const keyWithoutHost = WebPixelSettingsSchema.safeParse({ ...base, posthog_api_key: 'phc_test123' });
+assert(keyWithoutHost.success, 'schema alone permits a key with no host');
+assert.strictEqual(keyWithoutHost.data.posthog_api_host, '', 'and leaves the host empty');
+
 // A bad key is still rejected — defaulting must not have loosened validation.
 assert(
   !WebPixelSettingsSchema.safeParse({ ...base, posthog_api_key: 'nope' }).success,

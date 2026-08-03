@@ -127,6 +127,12 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
     if (!host.success) {
       return json({ ok: false, message: 'Enter a valid API host URL' }, { status: 400 });
     }
+    // An empty host is only valid as "PostHog not configured". Paired with a key
+    // it would produce a pixel that captures to nowhere and reports no error, so
+    // the two have to be set or cleared together.
+    if (key.data && !host.data.posthog_api_host) {
+      return json({ ok: false, message: 'Pick an API host to go with the project API key' }, { status: 400 });
+    }
     text(Constant.METAFIELD_KEY_POSTHOG_API_KEY, key.data);
     text(Constant.METAFIELD_KEY_POSTHOG_API_HOST, host.data.posthog_api_host);
   } else if (payload.step === 'general' && payload.destination === 'iris') {
