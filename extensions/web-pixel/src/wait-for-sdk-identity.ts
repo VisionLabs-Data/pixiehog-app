@@ -41,8 +41,27 @@ export function shouldWaitForSdk(setting: unknown): boolean {
   return String(setting) === 'true';
 }
 
-/** ~1s total. The measured gap was ~156ms; this leaves room for a cold CDN. */
-export const SDK_IDENTITY_WAIT_ATTEMPTS = 10;
+/**
+ * ~3s total.
+ *
+ * Sized from a measurement on a live storefront, both timings on one clock:
+ *
+ *   2144ms  pixel POST /e          (having waited a 1s budget and given up)
+ *   3153ms  SDK wrote distinct_id
+ *
+ * The first sizing used ~1s, from a figure inferred by diffing the uuidv7
+ * timestamps embedded in the two ids. That was wrong: those encode when each id
+ * was *minted*, not when the SDK *wrote* it to localStorage, and it understated
+ * the gap by roughly an order of magnitude. Measure the write, not the mint.
+ *
+ * 3s covers the observed ~3.1s with headroom. Known ceiling: this is a fixed
+ * budget against a variable CDN, so a slow enough load still misses, and an Iris
+ * event delayed 3s is lost outright if the shopper leaves first. PostHog is
+ * unaffected either way — captureAndBroadcast sends to PostHog before this waits.
+ * The durable fix is to send immediately and alias once the SDK id appears; this
+ * is the cheap version that demonstrably works on a normal load.
+ */
+export const SDK_IDENTITY_WAIT_ATTEMPTS = 30;
 export const SDK_IDENTITY_WAIT_INTERVAL_MS = 100;
 
 export interface WaitDeps {
