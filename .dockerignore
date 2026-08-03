@@ -1,3 +1,15 @@
 .cache
 build
 node_modules
+
+# Workspace installs and extension build output — the Shopify CLI rebuilds these
+# on deploy, and they are not used by the Remix server image.
+extensions/*/node_modules
+extensions/*/dist
+
+# Never needed in the image, and .git is the largest single directory in it.
+.git
+.github
+.env*
+*.log
+README_PREVIEW.md
