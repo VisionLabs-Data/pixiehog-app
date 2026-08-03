@@ -21,10 +21,14 @@ api_version = "2024-10"
   topics = [ "refunds/create" ]
   uri = "pubsub://hello-conversions:vizhog-shopify-webhooks"
 
-  # Iris server-side conversion forwarding (authoritative purchase/refund signals)
-  [[webhooks.subscriptions]]
-  topics = [ "orders/create", "orders/cancelled", "refunds/create" ]
-  uri = "/webhooks/orders"
+  # Iris server-side conversions go through the Pub/Sub subscription above, which
+  # fans out to both PostHog and Iris in vizhog-webhook-worker. The direct
+  # `/webhooks/orders` HTTPS subscription that used to be declared here is gone on
+  # purpose: with it, Shopify delivered every order twice — once to Pub/Sub and
+  # once to the Remix route — and nothing on Iris's side dedupes by uuid, so the
+  # order's revenue was counted twice. The `webhooks.orders.tsx` route and
+  # `iris/order-to-event.ts` are left in the tree, unsubscribed, as the fallback
+  # if the Pub/Sub path is ever retired.
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
