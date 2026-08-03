@@ -41,16 +41,22 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
+      {/* Shopify renders these in the admin's own sidebar, so the app must not
+          draw a nav of its own — see app/routes/preview.tsx for the standalone
+          shell used when previewing outside the embed. */}
       <NavMenu>
         <Link to="/app" rel="home">
           Overview
         </Link>
-        <Link to="/app/web-pixel-settings">
-          Web Pixel Events
-        </Link>
-        <Link to="/app/js-web-posthog-settings">
-          JS Web Config
-        </Link>
+        <Link to="/app/tracking">My Tracking</Link>
+        <Link to="/app/custom-events">Custom Events</Link>
+        <Link to="/app/web-pixel-settings">Web Pixel Events</Link>
+        <Link to="/app/js-web-posthog-settings">JS Web Config</Link>
+        <Link to="/app/real-time-activity">Real-Time Activity</Link>
+        <Link to="/app/channel-accuracy">Channel Accuracy</Link>
+        <Link to="/app/attribution-feed">Attribution Feed</Link>
+        <Link to="/app/event-builder">Event Builder</Link>
+        <Link to="/app/pre-built-tags">Pre-Built Tags</Link>
       </NavMenu>
       <Outlet />
       <PosthogInit/>

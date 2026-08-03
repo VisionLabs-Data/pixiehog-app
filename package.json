@@ -6,6 +6,7 @@
   "scripts": {
     "build": "remix vite:build",
     "dev": "shopify app dev",
+    "preview": "node --env-file=.env node_modules/.bin/remix vite:build && node --env-file=.env node_modules/.bin/remix-serve ./build/server/index.js",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",

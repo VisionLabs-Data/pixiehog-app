@@ -19,6 +19,8 @@ export const queryCurrentAppInstallation = async () => {
         $irisApiKeyKey: String!
         $irisApiHostKey: String!
         $irisEnabledKey: String!
+        $irisJsConfigKey: String!
+        $irisJsFeatureToggleKey: String!
       ) {
         currentAppInstallation {
           id
@@ -100,6 +102,18 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
+          iris_js_config: metafield(namespace: $namespace, key: $irisJsConfigKey) {
+            key
+            jsonValue
+            value
+            type
+          },
+          iris_js_feature_toggle: metafield(namespace: $namespace, key: $irisJsFeatureToggleKey) {
+            key
+            jsonValue
+            value
+            type
+          },
         }
       }
     `,
@@ -119,6 +133,8 @@ export const queryCurrentAppInstallation = async () => {
         irisApiKeyKey: Constant.METAFIELD_KEY_IRIS_API_KEY,
         irisApiHostKey: Constant.METAFIELD_KEY_IRIS_API_HOST,
         irisEnabledKey: Constant.METAFIELD_KEY_IRIS_ENABLED,
+        irisJsConfigKey: Constant.METAFIELD_KEY_IRIS_JS_CONFIG,
+        irisJsFeatureToggleKey: Constant.METAFIELD_KEY_IRIS_JS_FEATURE_TOGGLE,
       },
     }
   );

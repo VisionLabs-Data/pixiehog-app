@@ -15,5 +15,13 @@ export class Constant {
   static readonly METAFIELD_KEY_IRIS_API_HOST = 'iris_api_host'
   static readonly METAFIELD_KEY_IRIS_ENABLED = 'iris_enabled'
   static readonly IRIS_DEFAULT_API_HOST = 'https://mythic-analytics.gulp.workers.dev'
+  /** Iris JS SDK config (see common/dto/iris-js-settings.dto.ts). */
+  static readonly METAFIELD_KEY_IRIS_JS_CONFIG = 'iris_js_config'
+  /** Whether the Iris JS SDK loads on the storefront at all. */
+  static readonly METAFIELD_KEY_IRIS_JS_FEATURE_TOGGLE = 'iris_js_feature_toggle'
+  /** Documented ingest host for the JS SDK — note this differs from
+   *  IRIS_DEFAULT_API_HOST above, which is what shops are provisioned with today. */
+  static readonly IRIS_SDK_DEFAULT_API_HOST = 'https://api.adberserk.com'
+  static readonly IRIS_SDK_LOADER_URL = 'https://api.adberserk.com/cdn/m.js'
   static readonly SHOPIFY_API_VERSION = '2024-10'
 }
