@@ -9,7 +9,6 @@ export async function loader() {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTOHG_API_HOST: process.env.POSTOHG_API_HOST,
       APP_POSTHOG_JS_WEB_THEME_APP_UUID: APP_ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
-      APP_IRIS_JS_THEME_APP_UUID: APP_ENV.APP_IRIS_JS_THEME_APP_UUID,
     },
   });
 }
@@ -20,7 +19,6 @@ export async function clientLoader() {
       POSTHOG_API_KEY: window.ENV.POSTHOG_API_KEY,
       POSTOHG_API_HOST: window.ENV.POSTOHG_API_HOST,
       APP_POSTHOG_JS_WEB_THEME_APP_UUID: window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
-      APP_IRIS_JS_THEME_APP_UUID: window.ENV.APP_IRIS_JS_THEME_APP_UUID,
     },
   };
 }

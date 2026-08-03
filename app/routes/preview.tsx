@@ -29,7 +29,6 @@ export const links = () => [{ rel: 'stylesheet', href: polarisStyles }];
 const STUB_SCRIPT = `
 window.ENV = window.ENV || {};
 window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID = window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID || 'preview-app-embed-uuid';
-window.ENV.APP_IRIS_JS_THEME_APP_UUID = window.ENV.APP_IRIS_JS_THEME_APP_UUID || 'preview-iris-embed-uuid';
 window.shopify = window.shopify || {
   config: { shop: '${PREVIEW_SHOP}', apiKey: 'preview' },
   toast: { show: function () {} },

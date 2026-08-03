@@ -1,7 +1,7 @@
 /**
  * Checks the strategy → SDK-config mapping the Iris theme embed applies.
  *
- * Run with: npx tsx extensions/iris-js/privacy.check.ts
+ * Run with: npx tsx extensions/posthog-js/privacy.check.ts
  *
  * This is the one piece of the embed worth checking without a browser: it decides
  * whether identifiable data leaves a storefront, and getting it wrong is silent —

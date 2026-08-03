@@ -17,7 +17,7 @@ export const loader = () =>
     install: mockAppInstallation,
     jsWebEmbedActive: true,
     irisEmbedActive: false,
-    irisEmbedUuid: 'preview-iris-embed-uuid',
+    themeExtensionUuid: 'preview-theme-extension-uuid',
     shop: PREVIEW_SHOP,
   });
 

@@ -3,11 +3,17 @@ import type { ThemeRole } from '../../types/admin.types';
 import { queryThemes } from '../queries/query-themes';
 import  JSON5 from "json5"
 
-export async function appEmbedStatus(graphq: AdminGraphqlClient, appEmbedUuid: string) {
+/**
+ * Server-side twin of app/common.client/procedures/app-embed-status.ts — see
+ * there for why `blockHandle` matters (one theme extension, several blocks).
+ */
+export async function appEmbedStatus(
+  graphq: AdminGraphqlClient,
+  appEmbedUuid: string,
+  blockHandle?: string,
+) {
   // An unset UUID would make the `type.includes(uuid)` test below match every
-  // block, reporting an embed as active when it isn't installed at all. This
-  // happens for real: a theme extension has no UUID until its first deploy, so
-  // the env var is legitimately empty before then.
+  // block, reporting an embed as active when it isn't installed at all.
   if (!appEmbedUuid) {
     return false;
   }
@@ -44,6 +50,13 @@ export async function appEmbedStatus(graphq: AdminGraphqlClient, appEmbedUuid: s
   }
 
   return Object.values(current.blocks).some((payload) => {
-    return payload.type.includes(appEmbedUuid) && !payload.disabled
+    if (payload.disabled) {
+      return false;
+    }
+    if (!payload.type.includes(appEmbedUuid)) {
+      return false;
+    }
+    // `type` reads shopify://apps/<app>/blocks/<block-handle>/<extension-uuid>.
+    return blockHandle ? payload.type.includes(`/${blockHandle}/`) : true;
   })
 }

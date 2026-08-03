@@ -3,11 +3,19 @@ import { queryThemes } from '../queries/query-themes';
 import  JSON5 from "json5"
 import { serializeError } from 'serialize-error';
 
-export async function appEmbedStatus(appEmbedUuid: string) {
+/**
+ * Is an app embed block switched on in the live theme?
+ *
+ * @param appEmbedUuid The theme extension's registration UUID.
+ * @param blockHandle  Which block within that extension, e.g. 'posthog_js_web'.
+ *   Required in practice: Shopify allows one theme extension per app, so all our
+ *   blocks share the UUID above and matching on it alone would report the Iris
+ *   embed as active whenever the PostHog one was. Omitting it keeps the old
+ *   any-block-will-do behaviour.
+ */
+export async function appEmbedStatus(appEmbedUuid: string, blockHandle?: string) {
   // An unset UUID would make the `type.includes(uuid)` test below match every
-  // block, reporting an embed as active when it isn't installed at all. This
-  // happens for real: a theme extension has no UUID until its first deploy, so
-  // the env var is legitimately empty before then.
+  // block, reporting an embed as active when it isn't installed at all.
   if (!appEmbedUuid) {
     return false;
   }
@@ -48,8 +56,18 @@ export async function appEmbedStatus(appEmbedUuid: string) {
       return false;
     }
 
+    // A block's `type` reads like
+    //   shopify://apps/<app>/blocks/<block-handle>/<extension-uuid>
+    // so both parts have to match to identify one block of a multi-block
+    // extension.
     return Object.values(current.blocks).some((payload) => {
-      return payload.type.includes(appEmbedUuid) && !payload.disabled
+      if (payload.disabled) {
+        return false;
+      }
+      if (!payload.type.includes(appEmbedUuid)) {
+        return false;
+      }
+      return blockHandle ? payload.type.includes(`/${blockHandle}/`) : true;
     })
   } catch (error) {
     throw new Error('failed to resolve app embed status', {

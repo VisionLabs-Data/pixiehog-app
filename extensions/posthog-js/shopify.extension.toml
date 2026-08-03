@@ -1,3 +1,12 @@
+# Shopify allows exactly ONE theme app extension per app, so this single
+# extension carries BOTH app embed blocks — see blocks/posthog_js_web.liquid and
+# blocks/iris_js_web.liquid. The name is historical: it predates Iris and is left
+# alone because the registration UUID is tied to it and is referenced by
+# APP_POSTHOG_JS_WEB_THEME_APP_UUID in production.
+#
+# Consequence for embed-status checks: both blocks share this extension's UUID,
+# so a UUID match alone can't tell them apart. appEmbedStatus() matches on the
+# block handle too.
 name = "posthog-js"
 uid = "dbccbb61-7a84-7956-995f-967a6b500674e74dad2e"
 type = "theme"

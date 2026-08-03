@@ -24,6 +24,7 @@ import {
 import { LightbulbIcon, PlusCircleIcon } from '@shopify/polaris-icons';
 import { queryCurrentAppInstallation as clientQueryCurrentAppInstallation } from '../common.client/queries/current-app-installation';
 import { appEmbedStatus as clientAppEmbedStatus } from '../common.client/procedures/app-embed-status';
+import { Constant } from '../../common/constant';
 import LoadingSpinner from '../../common/components/LoadingSpinner';
 import { irisSvg, posthogSvg, shopifySvg, webhookSvg } from '../brand-icons';
 import type { DestinationView, SourceView, TrackingInstallation } from '../tracking-config';
@@ -32,9 +33,16 @@ import styles from '../styles/tracking.module.css';
 
 export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
   const response = await clientQueryCurrentAppInstallation();
+  // One theme extension, two blocks — same UUID, told apart by handle.
   const [jsWebEmbedActive, irisEmbedActive] = await Promise.all([
-    clientAppEmbedStatus(window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID),
-    clientAppEmbedStatus(window.ENV.APP_IRIS_JS_THEME_APP_UUID),
+    clientAppEmbedStatus(
+      window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
+      Constant.APP_POSTHOG_JS_WEB_THEME_APP_HANDLE,
+    ),
+    clientAppEmbedStatus(
+      window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
+      Constant.APP_IRIS_JS_THEME_APP_HANDLE,
+    ),
   ]);
   return {
     install: response.currentAppInstallation as TrackingInstallation,

@@ -9,9 +9,13 @@
   localStorage (`mythic_*`) and adopts them when present, so once this block is
   active the two paths report as one visitor.
 
-  Two deliberate differences from extensions/posthog-js:
+  Lives in the posthog-js extension because Shopify allows only one theme app
+  extension per app. It is a separate BLOCK, so merchants activate it
+  independently in the theme editor; the extension's name is just historical.
 
-  1. `target: head`, not body. The loader installs its uncaught-error and
+  Two deliberate differences from the PostHog block next door:
+
+  1. `target: head`, not body like PostHog's. The loader installs its uncaught-error and
      unhandled-rejection listeners synchronously when it runs, so anything thrown
      before it — including a tag manager's own init — is invisible to error
      tracking. Docs: "Place the loader high in <head>, before any tag manager."
@@ -60,7 +64,7 @@
       // The merchant's data collection strategy is a source-level setting that
       // applies to every destination (see /app/web-pixel-settings), so the SDK
       // has to honour it too — otherwise that promise is only true of the pixel.
-      // What each strategy forces lives in privacy.js, next to its own check.
+      // What each strategy forces lives in assets/privacy.js, next to its own check.
       var strategy = "{{ app.metafields.pxhog.data_collection_strategy }}";
       var overrides = irisPrivacyOverrides(strategy);
       config = applyOverrides(config, overrides);

@@ -93,15 +93,17 @@ export const clientLoader = async ({ params }: ClientLoaderFunctionArgs) => {
   const response = await clientQueryCurrentAppInstallation();
   // Both embeds are checked here rather than per-panel so switching steps
   // doesn't refetch the theme file each time.
+  // One theme extension, two blocks — same UUID, told apart by handle.
+  const themeExtensionUuid = window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID;
   const [jsWebEmbedActive, irisEmbedActive] = await Promise.all([
-    clientAppEmbedStatus(window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID),
-    clientAppEmbedStatus(window.ENV.APP_IRIS_JS_THEME_APP_UUID),
+    clientAppEmbedStatus(themeExtensionUuid, Constant.APP_POSTHOG_JS_WEB_THEME_APP_HANDLE),
+    clientAppEmbedStatus(themeExtensionUuid, Constant.APP_IRIS_JS_THEME_APP_HANDLE),
   ]);
   return {
     install: response.currentAppInstallation as TrackingInstallation,
     jsWebEmbedActive: Boolean(jsWebEmbedActive),
     irisEmbedActive: Boolean(irisEmbedActive),
-    irisEmbedUuid: window.ENV.APP_IRIS_JS_THEME_APP_UUID,
+    themeExtensionUuid,
     shop: window.shopify.config.shop,
   };
 };
@@ -233,7 +235,8 @@ interface PanelProps {
   irisEmbedActive: boolean;
   /** Deeplink target for the theme editor. */
   themeEditorUrl: (uuid: string, handle: string) => string;
-  irisEmbedUuid: string;
+  /** Registration UUID of the theme extension both embed blocks live in. */
+  themeExtensionUuid: string;
 }
 
 function OverviewPanel({ dest, install }: PanelProps) {
@@ -720,7 +723,7 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive, irisEmbedActive }: P
  * Rows are generated from IrisJsConfigSchema, so this form covers the SDK's
  * documented option surface without hand-writing a control per option.
  */
-function SdkConfigPanel({ install, irisEmbedActive, themeEditorUrl, irisEmbedUuid }: PanelProps) {
+function SdkConfigPanel({ install, irisEmbedActive, themeEditorUrl, themeExtensionUuid }: PanelProps) {
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
   const saved = install.iris_js_config?.jsonValue as Partial<IrisJsConfig> | null | undefined;
   const enabledInitial = install.iris_js_feature_toggle?.value === 'true';
@@ -798,8 +801,8 @@ function SdkConfigPanel({ install, irisEmbedActive, themeEditorUrl, irisEmbedUui
               <Text as="p">
                 The embed is enabled here but switched off in the theme, so nothing loads on the
                 storefront and none of these options apply yet.{' '}
-                {irisEmbedUuid ? (
-                  <Link url={themeEditorUrl(irisEmbedUuid, Constant.APP_IRIS_JS_THEME_APP_HANDLE)} target="_top">
+                {themeExtensionUuid ? (
+                  <Link url={themeEditorUrl(themeExtensionUuid, Constant.APP_IRIS_JS_THEME_APP_HANDLE)} target="_top">
                     Activate it in the theme editor
                   </Link>
                 ) : (
@@ -935,7 +938,7 @@ function buildSteps(
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
 export default function DestinationSettings() {
-  const { install, jsWebEmbedActive, irisEmbedActive, irisEmbedUuid, shop } =
+  const { install, jsWebEmbedActive, irisEmbedActive, themeExtensionUuid, shop } =
     useLoaderData<typeof clientLoader>();
   const themeEditorUrl = (uuid: string, handle: string) =>
     `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${uuid}/${handle}`;
@@ -1049,7 +1052,7 @@ export default function DestinationSettings() {
             jsWebEmbedActive={jsWebEmbedActive}
             irisEmbedActive={irisEmbedActive}
             themeEditorUrl={themeEditorUrl}
-            irisEmbedUuid={irisEmbedUuid}
+            themeExtensionUuid={themeExtensionUuid}
           />
         </Box>
       </InlineStack>

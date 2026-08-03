@@ -2,7 +2,7 @@
  * Maps VizHog's source-level data collection strategy onto Mythic SDK config.
  *
  * Kept as a pure module rather than inline liquid so it can be checked without a
- * browser — see extensions/iris-js/privacy.check.ts.
+ * browser — see extensions/posthog-js/privacy.check.ts.
  *
  * Shopify's Customer Privacy API has four independent categories (analytics,
  * marketing, preferences, sale_of_data). Only `analytics` gates analytics
