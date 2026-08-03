@@ -12,13 +12,13 @@ import {
   Box,
   Button,
   Card,
-  Icon,
   InlineStack,
   List,
   Page,
   Text,
 } from '@shopify/polaris';
 import type { IconSource } from '@shopify/polaris';
+import StackIcon from './StackIcon';
 
 export interface PlannedPageProps {
   title: string;
@@ -47,7 +47,7 @@ export default function PlannedPage({
         <Box padding="400">
           <BlockStack gap="500">
             <InlineStack gap="300" blockAlign="center">
-              <Icon source={icon} tone="subdued" />
+              <StackIcon source={icon} tone="subdued" />
               <Text as="h2" variant="headingMd">
                 Nothing to show here yet
               </Text>

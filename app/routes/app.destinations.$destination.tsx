@@ -39,6 +39,7 @@ import {
 import { CheckCircleIcon, ExternalIcon, HomeIcon, SearchIcon } from '@shopify/polaris-icons';
 import { Constant } from '../../common/constant';
 import MultiChoiceSelector from '../../common/components/MultiChoiceSelector';
+import StackIcon from '../../common/components/StackIcon';
 import { SettingType } from '../../common/interfaces/feature-settings.interface';
 import type { IrisJsConfig } from '../../common/dto/iris-js-settings.dto';
 import { IrisJsConfigSchema } from '../../common/dto/iris-js-settings.dto';
@@ -432,7 +433,7 @@ function EventsPanel({ dest, install }: PanelProps) {
                 {e.label}
               </Text>
               {e.on ? (
-                <Icon source={CheckCircleIcon} tone="success" />
+                <StackIcon source={CheckCircleIcon} tone="success" />
               ) : (
                 <Text as="span" variant="bodySm" tone="subdued">
                   Off
@@ -897,7 +898,7 @@ export default function DestinationSettings() {
                         aria-current={isActive ? 'true' : undefined}
                       >
                         <InlineStack gap="200" blockAlign="center" wrap={false}>
-                          <Icon
+                          <StackIcon
                             source={step.task ? CheckCircleIcon : HomeIcon}
                             tone={step.task ? (step.done ? 'success' : 'subdued') : 'subdued'}
                           />
