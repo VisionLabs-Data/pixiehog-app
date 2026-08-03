@@ -229,7 +229,9 @@ export default function JsWebEvents() {
   }, [jsWebPosthogSettings, jsWebPosthogSettingsInitialState, jsWebPosthogFeatureEnabledInitialState, jsWebPosthogFeatureEnabled]);
   return (
     <Page
-      title="JS Web Config"
+      title="PostHog JS SDK"
+      subtitle="PostHog destination — the posthog-js script loaded by the theme app embed"
+      backAction={{ content: 'PostHog', url: '/app/destinations/posthog?step=client-side' }}
       primaryAction={{
         onAction: submitSettings,
         content: 'Save',
@@ -255,7 +257,7 @@ export default function JsWebEvents() {
                     badgeToneOnDirty: 'attention',
                     bannerMessage: (
                       <div>
-                        Setup Posthog project API key <Link url="/app">Here</Link>.
+                        Set the PostHog project API key on the <Link url="/app/destinations/posthog?step=general">PostHog destination</Link>.
                       </div>
                     ),
                   },
@@ -266,7 +268,7 @@ export default function JsWebEvents() {
                     badgeToneOnDirty: 'attention',
                     bannerMessage: (
                       <div>
-                        Setup Posthog API host <Link url="/app">Here</Link>.
+                        Set the PostHog API host on the <Link url="/app/destinations/posthog?step=general">PostHog destination</Link>.
                       </div>
                     ),
                   },

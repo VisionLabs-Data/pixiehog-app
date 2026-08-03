@@ -43,15 +43,24 @@ export default function App() {
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       {/* Shopify renders these in the admin's own sidebar, so the app must not
           draw a nav of its own — see app/routes/preview.tsx for the standalone
-          shell used when previewing outside the embed. */}
+          shell used when previewing outside the embed.
+
+          App Bridge's NavMenu is flat: no groups, no headings. So the
+          source/destination distinction has to be carried in the label itself,
+          which is why they read "(source)" and "(destination)" rather than
+          sitting under headings the way they do in the preview shell.
+
+          Deliberately absent: /app/web-pixel-settings' PostHog SDK sibling
+          (/app/js-web-posthog-settings) is a PostHog-only page, so it's reached
+          from the PostHog destination rather than the top level. */}
       <NavMenu>
         <Link to="/app" rel="home">
-          Overview
+          My Tracking
         </Link>
-        <Link to="/app/tracking">My Tracking</Link>
+        <Link to="/app/web-pixel-settings">Shopify Web (source)</Link>
+        <Link to="/app/destinations/posthog">PostHog (destination)</Link>
+        <Link to="/app/destinations/iris">Iris (destination)</Link>
         <Link to="/app/custom-events">Custom Events</Link>
-        <Link to="/app/web-pixel-settings">Web Pixel Events</Link>
-        <Link to="/app/js-web-posthog-settings">JS Web Config</Link>
         <Link to="/app/real-time-activity">Real-Time Activity</Link>
         <Link to="/app/channel-accuracy">Channel Accuracy</Link>
         <Link to="/app/attribution-feed">Attribution Feed</Link>

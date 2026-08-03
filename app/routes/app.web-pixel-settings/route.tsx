@@ -1,5 +1,16 @@
+/**
+ * The **Shopify Web source**: which storefront events the Web Pixel captures.
+ *
+ * Everything on this page is source-level — every destination receives the same
+ * event stream from this one pixel, so a change here changes what PostHog *and*
+ * Iris see. Destination-specific settings (credentials, event renaming, SDK
+ * config) live under /app/destinations/:id instead.
+ *
+ * The PostHog Ecommerce Spec toggle used to live here. It renames events for
+ * PostHog only, so it moved to the PostHog destination's Events step.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Page, Layout, Card, BlockStack, Tabs, Divider, TextField, Icon, Box, Link, InlineStack, Checkbox } from '@shopify/polaris';
+import { Page, Layout, Card, BlockStack, Tabs, Divider, TextField, Icon, Box, Link, InlineStack, Checkbox, Badge, Banner, Select, Text } from '@shopify/polaris';
 import { SearchIcon } from '@shopify/polaris-icons';
 import { queryCurrentAppInstallation as clientQueryCurrentAppInstallation } from 'app/common.client/queries/current-app-installation';
 import MultiChoiceSelector from '../../../common/components/MultiChoiceSelector';
@@ -18,11 +29,12 @@ import { detailedDiff } from 'deep-object-diff';
 import LoadingSpinner from '../../../common/components/LoadingSpinner';
 import { queryWebPixel } from '../../common.client/queries/web-pixel';
 import type { WebPixelSettings } from '../../../common/dto/web-pixel-settings.dto';
-import { WebPixelPostHogEcommerceSpecSchema } from '../../../common/dto/web-pixel-posthog-ecommerce-spec';
 import { WebPixelDataLayerEnabledSchema } from '../../../common/dto/web-pixel-datalayer-enabled';
-import { posthogSvg } from './posthog.svg';
-import { urlWithShopParam } from '../../../common/utils';
-import { posthogKeys, shopifyKeys } from './keyoverrides';
+import { DataCollectionStrategySchema } from '../../../common/dto/data-collection-stratergy';
+import type { DataCollectionStrategy } from '../../../common/dto/data-collection-stratergy';
+import { shopifyKeys } from './keyoverrides';
+import { deriveDestinations } from '../../tracking-config';
+import type { TrackingInstallation } from '../../tracking-config';
 
 export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
   const response = await clientQueryCurrentAppInstallation();
@@ -33,7 +45,7 @@ export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
 
 export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
   const payload = await request.json();
-  const dtoResult = WebPixelEventsSettingsSchema.merge(WebPixelFeatureToggleSchema).merge(WebPixelPostHogEcommerceSpecSchema).merge(WebPixelDataLayerEnabledSchema).safeParse(payload);
+  const dtoResult = WebPixelEventsSettingsSchema.merge(WebPixelFeatureToggleSchema).merge(WebPixelDataLayerEnabledSchema).merge(DataCollectionStrategySchema).safeParse(payload);
   if (!dtoResult.success) {
     const message = Object.entries(dtoResult.error.flatten().fieldErrors)
       .map(([key, errors]) => {
@@ -44,7 +56,7 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
   }
   const response = await clientQueryCurrentAppInstallation();
 
-  const { web_pixel_feature_toggle, posthog_ecommerce_spec, datalayer_enabled, ...webPixelEventSettings } = dtoResult.data;
+  const { web_pixel_feature_toggle, datalayer_enabled, data_collection_strategy, ...webPixelEventSettings } = dtoResult.data;
 
   await clientMetafieldsSet([
     {
@@ -69,18 +81,20 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
       type: 'json',
     },
     {
-      key: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
-      namespace: Constant.METAFIELD_NAMESPACE,
-      ownerId: response.currentAppInstallation.id,
-      value: posthog_ecommerce_spec.toString(),
-      type: 'boolean',
-    },
-    {
       key: Constant.METAFIELD_KEY_DATALAYER_ENABLED,
       namespace: Constant.METAFIELD_NAMESPACE,
       ownerId: response.currentAppInstallation.id,
       value: datalayer_enabled.toString(),
       type: 'boolean',
+    },
+    // Global: the pixel gates identify-vs-anonymous for *every* sink off this
+    // one value, which is why it's owned by the source and not a destination.
+    {
+      key: Constant.METAFIELD_KEY_DATA_COLLECTION_STRATEGY,
+      namespace: Constant.METAFIELD_NAMESPACE,
+      ownerId: response.currentAppInstallation.id,
+      value: data_collection_strategy,
+      type: 'single_line_text_field',
     },
   ]);
 
@@ -99,7 +113,7 @@ export function HydrateFallback() {
 }
 export default function WebPixelEvents() {
   const fetcher = useFetcher();
-  const { currentAppInstallation, webPixel, shop } = useLoaderData<typeof clientLoader>();
+  const { currentAppInstallation, webPixel } = useLoaderData<typeof clientLoader>();
   const webPixelActualSettings = (webPixel?.settings as WebPixelSettings | undefined) || null
   const trackedEvents = (() =>  {
     try {
@@ -117,8 +131,15 @@ export default function WebPixelEvents() {
     | null
     | WebPixelEventsSettings;
 
-  const postHogEcommerceSpecMetafiledValue = currentAppInstallation.web_pixel_posthog_ecommerce_spec?.jsonValue == true;
   const dataLayerEnabledMetafieldValue = currentAppInstallation.datalayer_enabled?.jsonValue == true;
+  const strategyMetafieldValue =
+    (currentAppInstallation.data_collection_strategy?.value as DataCollectionStrategy['data_collection_strategy']) ||
+    'anonymized';
+  // Which destinations this source is actually feeding, so the requirement
+  // banner can say "no destination" instead of "no PostHog key".
+  const liveDestinations = deriveDestinations(currentAppInstallation as unknown as TrackingInstallation).filter(
+    (d) => d.configured,
+  );
 
 
   const webPixelSettingsInitialState = defaultWebPixelSettings.map<WebPixelSettingChoice>((entry) => {
@@ -187,11 +208,7 @@ export default function WebPixelEvents() {
     [webPixelSettings]
   );
 
-  const [checkedEcommerceSpec, setCheckedEcommerceSpec] = useState(!!postHogEcommerceSpecMetafiledValue);
-  const handleChangeEcommerceSpec = useCallback(
-    (newChecked: boolean) => setCheckedEcommerceSpec(newChecked),
-    [],
-  );
+  const [strategy, setStrategy] = useState(strategyMetafieldValue);
 
   const [checkedDataLayer, setCheckedDataLayer] = useState(!!dataLayerEnabledMetafieldValue);
   const handleChangeDataLayer = useCallback(
@@ -236,8 +253,8 @@ export default function WebPixelEvents() {
           })
         ),
         web_pixel_feature_toggle: webPixelFeatureEnabled,
-        posthog_ecommerce_spec: checkedEcommerceSpec,
         datalayer_enabled: checkedDataLayer,
+        data_collection_strategy: strategy,
       },
       {
         method: 'POST',
@@ -254,19 +271,22 @@ export default function WebPixelEvents() {
     if (webPixelFeatureEnabled != webPixelFeatureToggleInitialState) {
       return true;
     };
-    if (postHogEcommerceSpecMetafiledValue != checkedEcommerceSpec) {
-      return true;
-    }
     if (dataLayerEnabledMetafieldValue != checkedDataLayer) {
       return true;
     }
+    if (strategyMetafieldValue != strategy) {
+      return true;
+    }
     return false;
-  }, [webPixelSettings, webPixelFeatureEnabled, webPixelFeatureToggleInitialState, webPixelSettingsInitialState, postHogEcommerceSpecMetafiledValue, checkedEcommerceSpec, dataLayerEnabledMetafieldValue, checkedDataLayer]);
+  }, [webPixelSettings, webPixelFeatureEnabled, webPixelFeatureToggleInitialState, webPixelSettingsInitialState, dataLayerEnabledMetafieldValue, checkedDataLayer, strategyMetafieldValue, strategy]);
 
   const allEventsDisabled = webPixelSettings.every((entry) => !entry.value);
   return (
     <Page
-      title="Web Pixel Settings"
+      title="Shopify Web"
+      subtitle="Source — storefront events captured by the Shopify Web Pixel"
+      titleMetadata={<Badge tone="info">Shared by all destinations</Badge>}
+      backAction={{ content: 'My Tracking', url: '/app' }}
       primaryAction={{
         onAction: submitSettings,
         content: 'Save',
@@ -286,24 +306,17 @@ export default function WebPixelEvents() {
                 bannerTone="warning"
                 customActions={[
                   {
-                    trigger: !currentAppInstallation.posthog_api_key?.value,
+                    // A source with nowhere to send is the real blocker here.
+                    // Naming a specific destination's credential would be wrong
+                    // now that there is more than one destination.
+                    trigger: liveDestinations.length === 0,
                     badgeText: 'Action required',
                     badgeTone: 'critical',
                     badgeToneOnDirty: 'attention',
                     bannerMessage: (
                       <div>
-                        Setup Posthog project API key <Link url="/app">Here</Link>.
-                      </div>
-                    ),
-                  },
-                  {
-                    trigger: !currentAppInstallation.posthog_api_host?.value,
-                    badgeText: 'Action required',
-                    badgeTone: 'critical',
-                    badgeToneOnDirty: 'attention',
-                    bannerMessage: (
-                      <div>
-                        Setup Posthog API host <Link url="/app">Here</Link>.
+                        Set up at least one destination — <Link url="/app/destinations/posthog">PostHog</Link> or{' '}
+                        <Link url="/app/destinations/iris">Iris</Link>.
                       </div>
                     ),
                   },
@@ -317,31 +330,64 @@ export default function WebPixelEvents() {
                 ]}
               />
               <Divider />
-              <InlineStack gap="200" align="space-between"  blockAlign="center" wrap={false}>
-                <InlineStack gap="200" align="start"  blockAlign="center" wrap={false}>
-                  <Checkbox
-                    label="Toggle PostHog Ecommerce Spec"
-                    checked={checkedEcommerceSpec}
-                    onChange={handleChangeEcommerceSpec}
-                  />
-                  <InlineStack gap="200" align="start"  blockAlign="start" wrap={false}>
-                    <Icon source={posthogSvg} />
-                  </InlineStack>
-                </InlineStack>
-                <InlineStack gap="200" align="start"  blockAlign="start" wrap={false}>
-                  <Link target='_blank' url={urlWithShopParam(`https://pixiehog.com/docs/events-structures`, shop)}>Learn more</Link>
 
+              <BlockStack gap="300">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingSm">
+                    Privacy &amp; consent
+                  </Text>
+                  <Badge tone="info">Applies to all destinations</Badge>
                 </InlineStack>
-              </InlineStack>
+                <Select
+                  label="Data collection strategy"
+                  helpText="The pixel decides identified-vs-anonymous once, then fans the result out to every destination. It cannot be set per destination."
+                  options={[
+                    { label: 'Anonymized — no identifiable customer data', value: 'anonymized' },
+                    {
+                      label: 'Identified by consent — identifiable only where consent is granted',
+                      value: 'non-anonymized-by-consent',
+                    },
+                    { label: 'Identified — always identifiable', value: 'non-anonymized' },
+                  ]}
+                  value={strategy}
+                  onChange={(value) => setStrategy(value as typeof strategy)}
+                />
+                {strategy === 'non-anonymized' && (
+                  <Banner tone="warning">
+                    This bypasses customer privacy preferences for every destination. Make sure you have a
+                    lawful basis before saving.
+                  </Banner>
+                )}
+              </BlockStack>
+
               <Divider />
-              <InlineStack gap="200" align="start"  blockAlign="center" wrap={false}>
+              <BlockStack gap="200">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingSm">
+                    Storefront broadcast
+                  </Text>
+                  <Badge tone="info">Applies to all destinations</Badge>
+                </InlineStack>
                 <Checkbox
-                  label="Toggle GTM dataLayer Broadcast"
+                  label="Broadcast events to the GTM dataLayer"
+                  helpText="Mirrors each captured event onto window.dataLayer. Independent of where events are sent."
                   checked={checkedDataLayer}
                   onChange={handleChangeDataLayer}
                 />
-              </InlineStack>
+              </BlockStack>
+
               <Divider />
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingSm">
+                  Events captured
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Shopify&rsquo;s own event names. Turning one off stops it reaching{' '}
+                  <strong>every</strong> destination. To rename events for one destination only — for
+                  example PostHog&rsquo;s ecommerce spec — use that{' '}
+                  <Link url="/app/destinations/posthog?step=events">destination&rsquo;s Events step</Link>.
+                </Text>
+              </BlockStack>
               <Tabs disabled={!webPixelFeatureEnabled} tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
                 <BlockStack gap="500">
                   <TextField
@@ -357,7 +403,9 @@ export default function WebPixelEvents() {
                     settings={tabs[selectedTab].id === 'all' ? webPixelSettings : selectedWebPixelSettings}
                     onChange={handleWebPixelSettingChange}
                     featureEnabled={webPixelFeatureEnabled}
-                    keyOverride={checkedEcommerceSpec ? posthogKeys : shopifyKeys}
+                    /* Always Shopify's names: this is the source, and the
+                       PostHog rename now belongs to the PostHog destination. */
+                    keyOverride={shopifyKeys}
                   ></MultiChoiceSelector>
                 </BlockStack>
               </Tabs>

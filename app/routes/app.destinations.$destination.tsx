@@ -8,9 +8,18 @@
  * Steps that already have a full editor elsewhere (the Web Pixel event matrix,
  * the JS Web config) show live state here and hand off to that page rather than
  * duplicating the form.
+ *
+ * The dividing line, and the reason the pages are split this way at all:
+ * anything that only affects THIS destination is editable here (credentials,
+ * event renaming, its own SDK config). Anything shared by every destination is
+ * read-only here and edited on the source that owns it — /app/web-pixel-settings
+ * for the Shopify Web source. Consent is the case that catches people out: the
+ * pixel resolves identified-vs-anonymous once and fans the answer out, so it
+ * cannot be a per-destination setting even though it looks like one.
  */
 import { useCallback, useMemo, useState } from 'react';
 import type { ClientActionFunctionArgs, ClientLoaderFunctionArgs } from '@remix-run/react';
+import type { IconSource } from '@shopify/polaris';
 import {
   json,
   useFetcher,
@@ -26,17 +35,17 @@ import {
   Box,
   Button,
   Card,
+  Checkbox,
   Divider,
   Icon,
   InlineStack,
   Link,
   Page,
-  RadioButton,
   Select,
   Text,
   TextField,
 } from '@shopify/polaris';
-import { CheckCircleIcon, ExternalIcon, HomeIcon, SearchIcon } from '@shopify/polaris-icons';
+import { CheckCircleIcon, ExternalIcon, HomeIcon, LockIcon, SearchIcon } from '@shopify/polaris-icons';
 import { Constant } from '../../common/constant';
 import MultiChoiceSelector from '../../common/components/MultiChoiceSelector';
 import StackIcon from '../../common/components/StackIcon';
@@ -47,10 +56,11 @@ import type { IrisJsSettingChoice } from '../iris-js-settings-rows';
 import { irisJsSettingsWithValues } from '../iris-js-settings-rows';
 import { PosthogApiHostSchema } from '../../common/dto/posthog-api-host.dto';
 import { posthogApiKeyPrimitive } from '../../common/dto/posthog-api-key.dto';
-import { DataCollectionStrategySchema } from '../../common/dto/data-collection-stratergy';
+import { WebPixelPostHogEcommerceSpecSchema } from '../../common/dto/web-pixel-posthog-ecommerce-spec';
 import { irisApiHostPrimitive, irisApiKeyPrimitive } from '../../common/dto/iris-settings.dto';
 import { metafieldsSet as clientMetafieldsSet } from '../common.client/mutations/metafields-set';
 import { metafieldsDelete as clientMetafieldsDelete } from '../common.client/mutations/metafields-delete';
+import { recalculateWebPixel as clientRecalculateWebPixel } from '../common.client/procedures/recalculate-web-pixel';
 import { queryCurrentAppInstallation as clientQueryCurrentAppInstallation } from '../common.client/queries/current-app-installation';
 import { appEmbedStatus as clientAppEmbedStatus } from '../common.client/procedures/app-embed-status';
 import LoadingSpinner from '../../common/components/LoadingSpinner';
@@ -165,19 +175,19 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
       type: 'json',
       value: JSON.stringify(parsed.data),
     });
-  } else if (payload.step === 'consent') {
-    const parsed = DataCollectionStrategySchema.safeParse({
-      data_collection_strategy: payload.data_collection_strategy,
+  } else if (payload.step === 'events' && payload.destination === 'posthog') {
+    const parsed = WebPixelPostHogEcommerceSpecSchema.safeParse({
+      posthog_ecommerce_spec: payload.posthog_ecommerce_spec,
     });
     if (!parsed.success) {
-      return json({ ok: false, message: 'Pick a data collection strategy' }, { status: 400 });
+      return json({ ok: false, message: 'Invalid ecommerce spec value' }, { status: 400 });
     }
     sets.push({
-      key: Constant.METAFIELD_KEY_DATA_COLLECTION_STRATEGY,
+      key: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
       namespace,
       ownerId,
-      type: 'single_line_text_field',
-      value: parsed.data.data_collection_strategy,
+      type: 'boolean',
+      value: String(parsed.data.posthog_ecommerce_spec),
     });
   } else {
     return json({ ok: false, message: 'Nothing to save for this step' }, { status: 400 });
@@ -185,6 +195,14 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
 
   if (deletes.length) await clientMetafieldsDelete(deletes);
   if (sets.length) await clientMetafieldsSet(sets);
+
+  // Everything above is read by the running Web Pixel, so it has to be pushed
+  // into the pixel's settings — a metafield write alone changes nothing on the
+  // storefront. Harmless when the pixel isn't installed yet.
+  const recalculated = await clientRecalculateWebPixel();
+  if (recalculated?.status === 'error') {
+    return json({ ok: false, message: recalculated.message }, { status: 422 });
+  }
   return json({ ok: true, message: 'Settings saved' }, { status: 200 });
 };
 
@@ -398,14 +416,23 @@ function GeneralPanel({ dest, install }: PanelProps) {
 }
 
 function EventsPanel({ dest, install }: PanelProps) {
+  const fetcher = useFetcher<{ ok: boolean; message: string }>();
+  const specInitial = install.web_pixel_posthog_ecommerce_spec?.value === 'true';
+  const [spec, setSpec] = useState(specInitial);
+  const saving = fetcher.state !== 'idle';
+  // PostHog-only: renames the source's Shopify event names into PostHog's
+  // ecommerce spec on the way out. Iris receives the Shopify names either way,
+  // which is why this control belongs to the destination and not the source.
+  const renaming = dest.id === 'posthog' && spec;
+
   const webEvents = useMemo(() => {
     const settings = (install.web_pixel_settings?.jsonValue as Record<string, boolean> | null) ?? {};
     return Object.keys(webPixelToPostHogEcommerceSpecMap).map((key) => ({
       key,
-      label: webPixelToPostHogEcommerceSpecMap[key] ?? key,
+      label: renaming ? (webPixelToPostHogEcommerceSpecMap[key] ?? key) : key,
       on: settings[key] === true,
     }));
-  }, [install]);
+  }, [install, renaming]);
   const onCount = webEvents.filter((e) => e.on).length;
 
   return (
@@ -420,6 +447,41 @@ function EventsPanel({ dest, install }: PanelProps) {
           </Text>
         </BlockStack>
 
+        {dest.id === 'posthog' && (
+          <>
+            <BlockStack gap="200">
+              <Text as="h3" variant="headingSm">
+                Event naming
+              </Text>
+              {fetcher.data && (
+                <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
+              )}
+              <Checkbox
+                label="Use PostHog's ecommerce spec event names"
+                helpText="Renames events for PostHog only — for example product_viewed becomes Product Viewed. Other destinations keep Shopify's names."
+                checked={spec}
+                onChange={setSpec}
+              />
+              <InlineStack>
+                <Button
+                  variant="primary"
+                  loading={saving}
+                  disabled={spec === specInitial || saving}
+                  onClick={() =>
+                    fetcher.submit(
+                      JSON.stringify({ step: 'events', destination: 'posthog', posthog_ecommerce_spec: spec }),
+                      { method: 'POST', encType: 'application/json' },
+                    )
+                  }
+                >
+                  Save
+                </Button>
+              </InlineStack>
+            </BlockStack>
+            <Divider />
+          </>
+        )}
+
         <BlockStack gap="200">
           <InlineStack align="space-between" blockAlign="center">
             <Text as="h3" variant="headingSm">
@@ -427,6 +489,10 @@ function EventsPanel({ dest, install }: PanelProps) {
             </Text>
             <Badge tone={onCount ? 'success' : undefined}>{`${onCount} of ${webEvents.length} on`}</Badge>
           </InlineStack>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Which events are captured is a Shopify Web source setting, shared by every destination —
+            it can only be changed there.
+          </Text>
           {webEvents.map((e) => (
             <InlineStack key={e.key} align="space-between" blockAlign="center">
               <Text as="p" variant="bodySm" tone={e.on ? undefined : 'subdued'}>
@@ -443,7 +509,7 @@ function EventsPanel({ dest, install }: PanelProps) {
           ))}
           {/* ponytail: the event matrix already has a full editor — link, don't rebuild. */}
           <InlineStack>
-            <Button url="/app/web-pixel-settings">Edit Web Pixel events</Button>
+            <Button url="/app/web-pixel-settings">Edit on the Shopify Web source</Button>
           </InlineStack>
         </BlockStack>
 
@@ -487,99 +553,49 @@ function EventsPanel({ dest, install }: PanelProps) {
   );
 }
 
-function ConsentPanel({ dest, install }: PanelProps) {
-  const fetcher = useFetcher<{ ok: boolean; message: string }>();
-  const initial = install.data_collection_strategy?.value || 'anonymized';
-  const [strategy, setStrategy] = useState(initial);
-  const saving = fetcher.state !== 'idle';
+function ConsentPanel({ install }: PanelProps) {
+  const strategy = install.data_collection_strategy?.value || 'anonymized';
 
-  if (dest.id === 'iris') {
-    return (
-      <Card>
-        <BlockStack gap="400">
-          <Text as="h2" variant="headingMd">
-            Consent
-          </Text>
-          <Text as="p" tone="subdued">
-            Iris rides the same Web Pixel as PostHog, so it inherits the Shopify Web
-            source&rsquo;s data collection strategy — it can&rsquo;t be set separately here.
-          </Text>
-          <InlineStack align="space-between">
-            <Text as="p" variant="bodyMd">
-              Current strategy
-            </Text>
-            <Badge>{STRATEGY_LABELS[initial] ?? initial}</Badge>
-          </InlineStack>
-          <InlineStack>
-            <Button url="/app/destinations/posthog?step=consent">Change on PostHog</Button>
-          </InlineStack>
-        </BlockStack>
-      </Card>
-    );
-  }
-
+  // Read-only on purpose. The Web Pixel resolves identified-vs-anonymous once
+  // and fans the same answer out to every sink, so there is no such thing as a
+  // per-destination consent strategy. It used to be editable on PostHog with
+  // Iris showing a "change it over there" link, which read as though PostHog
+  // owned a setting it merely happened to display.
   return (
     <Card>
       <BlockStack gap="400">
         <BlockStack gap="200">
-          <Text as="h2" variant="headingMd">
-            Would you like us to consider consent?
-          </Text>
+          <InlineStack gap="200" blockAlign="center">
+            <Text as="h2" variant="headingMd">
+              Consent
+            </Text>
+            <Badge tone="info">Applies to all destinations</Badge>
+          </InlineStack>
           <Text as="p" tone="subdued">
-            Controls whether events carry identifiable customer data, and whether that depends on
-            the shopper&rsquo;s consent choices.
+            Whether events carry identifiable customer data, and whether that depends on the
+            shopper&rsquo;s consent choices. This is a Shopify Web source setting — one pixel
+            decides it for every destination, so it can&rsquo;t be set separately here.
           </Text>
         </BlockStack>
 
-        {fetcher.data && (
-          <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
-        )}
-
-        <BlockStack gap="200">
-          <RadioButton
-            label="Anonymized"
-            helpText="No identifiable customer data is sent. Consent is not required."
-            checked={strategy === 'anonymized'}
-            id="anonymized"
-            onChange={() => setStrategy('anonymized')}
-          />
-          <RadioButton
-            label="Not anonymized, by consent"
-            helpText="Identifiable data is sent only for shoppers who have granted consent."
-            checked={strategy === 'non-anonymized-by-consent'}
-            id="non-anonymized-by-consent"
-            onChange={() => setStrategy('non-anonymized-by-consent')}
-          />
-          <RadioButton
-            label="Not anonymized"
-            helpText="Identifiable data is always sent. This bypasses customer privacy preferences."
-            checked={strategy === 'non-anonymized'}
-            id="non-anonymized"
-            onChange={() => setStrategy('non-anonymized')}
-          />
-        </BlockStack>
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="p" variant="bodyMd">
+            Current strategy
+          </Text>
+          <Badge tone={strategy === 'non-anonymized' ? 'warning' : undefined}>
+            {STRATEGY_LABELS[strategy] ?? strategy}
+          </Badge>
+        </InlineStack>
 
         {strategy === 'non-anonymized' && (
           <Banner tone="warning">
-            This option bypasses customer privacy preferences. Make sure you have a lawful basis
-            before enabling it.
+            Identifiable data is sent for every shopper, to every destination, regardless of their
+            privacy preferences.
           </Banner>
         )}
 
         <InlineStack>
-          <Button
-            variant="primary"
-            loading={saving}
-            disabled={strategy === initial || saving}
-            onClick={() =>
-              fetcher.submit(JSON.stringify({ step: 'consent', data_collection_strategy: strategy }), {
-                method: 'POST',
-                encType: 'application/json',
-              })
-            }
-          >
-            Save
-          </Button>
+          <Button url="/app/web-pixel-settings">Change on the Shopify Web source</Button>
         </InlineStack>
       </BlockStack>
     </Card>
@@ -637,8 +653,10 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive }: PanelProps) {
               </Banner>
             )}
             <InlineStack gap="200">
-              <Button url="/app/js-web-posthog-settings">JS Web config</Button>
-              <Button url="/app/web-pixel-settings">Web Pixel settings</Button>
+              <Button variant="primary" url="/app/js-web-posthog-settings">
+                Configure PostHog JS SDK
+              </Button>
+              <Button url="/app/web-pixel-settings">Shopify Web source</Button>
             </InlineStack>
           </>
         )}
@@ -650,7 +668,7 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive }: PanelProps) {
               Turning the Web Pixel off stops the Iris web path too.
             </Banner>
             <InlineStack>
-              <Button url="/app/web-pixel-settings">Web Pixel settings</Button>
+              <Button url="/app/web-pixel-settings">Shopify Web source</Button>
             </InlineStack>
           </>
         )}
@@ -774,9 +792,15 @@ function SdkConfigPanel({ install }: PanelProps) {
 interface Step {
   id: string;
   label: string;
-  /** Overview isn't a setup task, so it doesn't count toward progress. */
+  /**
+   * Whether the step is something you complete *here*. Overview and Consent are
+   * both false: one is a summary, the other is owned by the source. Only `task`
+   * steps count toward the progress figure.
+   */
   task: boolean;
   done: boolean;
+  /** Defaults to a check (tasks) or a home mark (everything else). */
+  icon?: IconSource;
   Panel: (props: PanelProps) => JSX.Element;
 }
 
@@ -793,10 +817,12 @@ function buildSteps(dest: DestinationView, install: TrackingInstallation, jsWebE
     { id: 'events', label: 'Events', task: true, done: trackedCount > 0, Panel: EventsPanel },
     {
       id: 'consent',
-      label: 'Consent',
-      task: true,
-      // Iris inherits the strategy, so there's nothing to complete on its side.
-      done: dest.id === 'iris' ? true : Boolean(install.data_collection_strategy?.value),
+      label: 'Consent (shared)',
+      // Not a task: every destination inherits one strategy from the source, so
+      // there is nothing to complete here for either of them.
+      task: false,
+      done: false,
+      icon: LockIcon,
       Panel: ConsentPanel,
     },
     {
@@ -843,7 +869,7 @@ export default function DestinationSettings() {
 
   return (
     <Page
-      backAction={{ content: 'My Tracking', onAction: () => navigate('/app/tracking') }}
+      backAction={{ content: 'My Tracking', onAction: () => navigate('/app') }}
       title={dest.name}
       titleMetadata={dest.live ? <Badge tone="success">Live</Badge> : <Badge>{dest.configured ? 'Off' : 'Not set up'}</Badge>}
       secondaryActions={[
@@ -899,8 +925,8 @@ export default function DestinationSettings() {
                       >
                         <InlineStack gap="200" blockAlign="center" wrap={false}>
                           <StackIcon
-                            source={step.task ? CheckCircleIcon : HomeIcon}
-                            tone={step.task ? (step.done ? 'success' : 'subdued') : 'subdued'}
+                            source={step.icon ?? (step.task ? CheckCircleIcon : HomeIcon)}
+                            tone={step.task && step.done ? 'success' : 'subdued'}
                           />
                           <Text as="span" variant="bodyMd" fontWeight={isActive ? 'semibold' : undefined}>
                             {step.label}

@@ -1,13 +1,12 @@
 import { Link } from '@remix-run/react';
 
 const PAGES = [
-  { to: '/preview/overview', label: 'Overview', desc: 'PostHog + Iris credentials, data strategy, feature toggles' },
   { to: '/preview/tracking', label: 'My Tracking', desc: 'Shopify Web + Webhooks → PostHog + Iris wiring diagram' },
   { to: '/preview/custom-events', label: 'Custom Events', desc: 'Catalog of every event sent, and to which destination' },
-  { to: '/preview/destinations/posthog', label: 'Destination · PostHog', desc: 'Setup steps: general, events, consent, client-side' },
+  { to: '/preview/web-pixel', label: 'Source · Shopify Web', desc: 'Events captured, plus the settings shared by all destinations' },
+  { to: '/preview/destinations/posthog', label: 'Destination · PostHog', desc: 'Credentials, event naming, client-side; consent is read-only' },
   { to: '/preview/destinations/iris', label: 'Destination · Iris', desc: 'As above, plus the generated JS SDK config form' },
-  { to: '/preview/web-pixel', label: 'Web Pixel Events', desc: 'Per-event web pixel settings' },
-  { to: '/preview/js-web', label: 'JS Web Config', desc: 'Client-side posthog-js configuration' },
+  { to: '/preview/js-web', label: 'Destination · PostHog JS SDK', desc: 'Client-side posthog-js configuration' },
   { to: '/preview/real-time-activity', label: 'Real-Time Activity', desc: 'Placeholder — needs a read path back from PostHog' },
   { to: '/preview/channel-accuracy', label: 'Channel Accuracy', desc: 'Placeholder — needs ad platform credentials' },
   { to: '/preview/attribution-feed', label: 'Attribution Feed', desc: 'Placeholder — needs persisted sessions' },

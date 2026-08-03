@@ -65,6 +65,17 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     return { status: 'disconnected' };
   }
 
+  // A pixel with no destination has nowhere to send, and the extension throws on
+  // boot in that state. Checked explicitly per destination rather than leaning on
+  // the schema, so that either one alone is enough to keep the pixel installed.
+  if (!posthogApiKey && !(irisEnabled && irisApiKey)) {
+    if (!shopifyWebPixel?.id) {
+      return null;
+    }
+    await webPixelDelete(graphq, shopifyWebPixel.id);
+    return { status: 'disconnected' };
+  }
+
   const { posthog_api_key, iris_api_key, iris_api_host, iris_enabled, ...eventsSettings } = dtoResult.data;
 
   const eventsSettingsValues = Object.values(eventsSettings);

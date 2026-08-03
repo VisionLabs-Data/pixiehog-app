@@ -73,6 +73,17 @@ export async function recalculateWebPixel(): Promise<
     return { status: 'disconnected' };
   }
 
+  // A pixel with no destination has nowhere to send, and the extension throws on
+  // boot in that state. Checked explicitly per destination rather than leaning on
+  // the schema, so that either one alone is enough to keep the pixel installed.
+  if (!posthogApiKey && !(irisEnabled && irisApiKey)) {
+    if (!shopifyWebPixel?.id) {
+      return null;
+    }
+    await webPixelDelete(shopifyWebPixel.id);
+    return { status: 'disconnected' };
+  }
+
   const allEventsDisabled = (trackedEvents || []).length === 0;
   if (allEventsDisabled) {
     // delete web pixel

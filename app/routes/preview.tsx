@@ -42,27 +42,28 @@ interface NavItem {
   planned?: boolean;
 }
 
+// Mirrors the production IA: sources own what's shared, destinations own what's
+// theirs. The one item that is neither — the PostHog JS SDK page — is nested
+// under PostHog rather than given a top-level slot, because that's where it is
+// reached from in the embedded app.
 const NAV: { group: string | null; items: NavItem[] }[] = [
   {
     group: null,
     items: [
-      { to: '/preview/overview', label: 'Overview' },
       { to: '/preview/tracking', label: 'My Tracking' },
       { to: '/preview/custom-events', label: 'Custom Events' },
     ],
+  },
+  {
+    group: 'Sources',
+    items: [{ to: '/preview/web-pixel', label: 'Shopify Web' }],
   },
   {
     group: 'Destinations',
     items: [
       { to: '/preview/destinations/posthog', label: 'PostHog' },
       { to: '/preview/destinations/iris', label: 'Iris' },
-    ],
-  },
-  {
-    group: 'Sources',
-    items: [
-      { to: '/preview/web-pixel', label: 'Web Pixel Events' },
-      { to: '/preview/js-web', label: 'JS Web Config' },
+      { to: '/preview/js-web', label: '↳ PostHog JS SDK' },
     ],
   },
   {
