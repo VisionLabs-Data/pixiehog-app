@@ -67,6 +67,12 @@ type = "single_line_text_field"
 # the Iris SDK theme embed is on, so it only waits for the SDK's identity when
 # there is an SDK coming — otherwise every first event on a shop without the
 # embed would pay the full timeout for nothing.
+# Iris's own event-naming flag, independent of posthog_ecommerce_spec.
+[settings.fields.iris_ecommerce_spec]
+name = "Iris uses PostHog ecommerce spec names"
+description = "iris_ecommerce_spec"
+type = "single_line_text_field"
+
 [settings.fields.iris_js_enabled]
 name = "Iris SDK theme embed enabled"
 description = "iris_js_enabled"

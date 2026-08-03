@@ -35,6 +35,7 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
         $irisApiKeyKey: String!
         $irisApiHostKey: String!
         $irisEnabledKey: String!
+        $irisEcommerceSpecKey: String!
         $irisJsFeatureToggleKey: String!
       ) {
         currentAppInstallation {
@@ -117,6 +118,12 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
             value
             type
           },
+          iris_ecommerce_spec: metafield(namespace: $namespace, key: $irisEcommerceSpecKey) {
+            key
+            jsonValue
+            value
+            type
+          },
           iris_js_feature_toggle: metafield(namespace: $namespace, key: $irisJsFeatureToggleKey) {
             key
             jsonValue
@@ -142,6 +149,7 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
         irisApiKeyKey: Constant.METAFIELD_KEY_IRIS_API_KEY,
         irisApiHostKey: Constant.METAFIELD_KEY_IRIS_API_HOST,
         irisEnabledKey: Constant.METAFIELD_KEY_IRIS_ENABLED,
+        irisEcommerceSpecKey: Constant.METAFIELD_KEY_IRIS_ECOMMERCE_SPEC,
         irisJsFeatureToggleKey: Constant.METAFIELD_KEY_IRIS_JS_FEATURE_TOGGLE,
       },
     }

@@ -30,8 +30,10 @@ export interface TrackingInstallation {
   web_pixel_feature_toggle?: MetafieldValue | null;
   web_pixel_settings?: MetafieldValue | null;
   web_pixel_tracked_events?: MetafieldValue | null;
-  /** PostHog-only event renaming, owned by the PostHog destination. */
+  /** Event renaming, one flag per destination that owns it. */
   web_pixel_posthog_ecommerce_spec?: MetafieldValue | null;
+  /** Unset means "inherit web_pixel_posthog_ecommerce_spec". */
+  iris_ecommerce_spec?: MetafieldValue | null;
   js_web_posthog_feature_toggle?: MetafieldValue | null;
   js_web_posthog_config?: MetafieldValue | null;
   iris_api_key?: MetafieldValue | null;

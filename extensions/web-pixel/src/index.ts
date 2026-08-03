@@ -14,7 +14,12 @@ import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerc
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
-import { onceWaiter, shouldWaitForSdk } from './wait-for-sdk-identity';
+import {
+  shouldExpectSdk,
+  waitForSdkIdentity,
+  SDK_IDENTITY_WAIT_ATTEMPTS,
+  SDK_IDENTITY_WAIT_INTERVAL_MS,
+} from './wait-for-sdk-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -29,6 +34,10 @@ register(async (extensionApi) => {
    * Web Pixel settings can only be strings
    */
   const posthogEcommerceSpecEnabled = String(settings?.posthog_ecommerce_spec || '') == 'true'
+  // Iris's own naming flag. Defaulted from PostHog's in recalculateWebPixel when
+  // the shop has never set it, so existing shops see no change in what Iris
+  // receives — they can diverge from the next save onward.
+  const irisEcommerceSpecEnabled = String(settings?.iris_ecommerce_spec || '') == 'true'
   const dataLayerEnabled = String(settings?.datalayer_enabled || '') == 'true'
   const possibleEvents: (keyof PixelEvents)[] = [
     'cart_viewed',
@@ -68,10 +77,9 @@ register(async (extensionApi) => {
   const irisApiKey = String(settings.iris_api_key || '').trim();
   const irisApiHost = String(settings.iris_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
   const irisEnabled = String(settings.iris_enabled || '') == 'true' && !!irisApiKey;
-  // Only meaningful as "is an SDK expected on this page" — see the wait below.
   // Tri-state on purpose: an absent setting means this pixel's stored settings
   // predate the field, not that the embed is off.
-  const irisJsMaybeEnabled = shouldWaitForSdk(settings.iris_js_enabled);
+  const irisMayHaveSdk = shouldExpectSdk(settings.iris_js_enabled);
   if (!posthog_api_key && !irisEnabled) {
     throw new Error('No analytics provider configured (PostHog or Iris)');
   }
@@ -265,34 +273,64 @@ register(async (extensionApi) => {
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
   /**
-   * The pixel beats the SDK to the first event by ~156ms (measured), so without
-   * this the landing pageview — the one carrying the landing page and UTMs —
-   * went out under the pixel's own id while everything after it adopted the
-   * SDK's, splitting one visit across two people.
+   * Iris bootstrap alias.
    *
-   * Gated on iris_js_enabled: with no SDK theme embed there is nothing to wait
-   * for, and waiting would delay the first event of every visit for nothing.
-   * `onceWaiter` means at most one wait per page, however many events fire.
+   * The pixel reaches its first event well before the SDK publishes an identity
+   * (measured: SDK writes at ~3.1s, pixel posts at ~2.1s), so early Iris events
+   * go out under the pixel's own id while later ones adopt the SDK's — one visit
+   * split across two people, with the landing page and UTMs stranded on the
+   * wrong one.
+   *
+   * This used to be a blocking wait in front of the first send. Wrong shape: it
+   * delayed the landing pageview, and a delayed event is lost outright if the
+   * shopper leaves first — a mis-attributed pageview traded for a missing one.
+   * Now the event goes immediately and a background watch links the two ids with
+   * `$identify` + `$anon_distinct_id` as soon as the SDK publishes one, which is
+   * the same mechanism Iris already uses to merge anonymous into known.
    */
-  const awaitSdkIdentity = onceWaiter({
-    read: async () => str(await readIrisSdkValue<string>('distinct_id')),
-    // Guarded: if the sandbox ever lacks setTimeout this degrades to a tight
-    // loop of reads (each an async round trip to the document, so not a spin)
-    // rather than throwing out of irisEnvelope and killing Iris capture.
-    sleep: (ms) =>
-      new Promise<void>((resolve) => {
-        if (typeof setTimeout === 'function') {
-          setTimeout(resolve, ms);
-        } else {
-          resolve();
+  let irisSentAs: string | null = null;
+  let irisAliasWatchStarted = false;
+
+  // Guarded: if the sandbox ever lacks setTimeout this degrades to reads without
+  // delay (each an async round trip to the document, so not a spin) rather than
+  // throwing inside the watch.
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      if (typeof setTimeout === 'function') {
+        setTimeout(resolve, ms);
+      } else {
+        resolve();
+      }
+    });
+
+  function startIrisAliasWatch() {
+    if (irisAliasWatchStarted || !iris || !irisMayHaveSdk) {
+      return;
+    }
+    irisAliasWatchStarted = true;
+    // Deliberately not awaited — nothing may block on this.
+    void (async () => {
+      try {
+        const sdkId = await waitForSdkIdentity({
+          read: async () => str(await readIrisSdkValue<string>('distinct_id')),
+          sleep,
+          attempts: SDK_IDENTITY_WAIT_ATTEMPTS,
+          intervalMs: SDK_IDENTITY_WAIT_INTERVAL_MS,
+        });
+        // No SDK, or our first event already went out under its id — either way
+        // there is nothing to merge.
+        if (!sdkId || !irisSentAs || sdkId === irisSentAs) {
+          return;
         }
-      }),
-  });
+        const session = await readIrisSdkValue<{ id?: string }>('session');
+        await iris.identify(sdkId, irisSentAs, {}, str(session?.id) || undefined);
+      } catch (_e) {
+        // A failed alias must never take capture down with it.
+      }
+    })();
+  }
 
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
-    if (irisJsMaybeEnabled) {
-      await awaitSdkIdentity();
-    }
     const [session, deviceId, sdkDistinctId] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
       readIrisSdkValue<string>('device_id'),
@@ -314,20 +352,42 @@ register(async (extensionApi) => {
     };
   }
 
+  /**
+   * Fan one Shopify event out to every sink.
+   *
+   * Takes the RAW Shopify event name and renames per destination. It used to take
+   * an already-renamed name, so PostHog's ecommerce-spec toggle silently decided
+   * what Iris received too — flipping a setting on one destination changed
+   * another destination's data. Each destination now has its own naming flag.
+   */
   async function captureAndBroadcast(
     distinctId: string,
-    eventName: string,
+    sourceEventName: string,
     properties: Record<string, any>,
     options: Record<string, any>,
   ) {
+    const posthogName = resolveEventName(sourceEventName, posthogEcommerceSpecEnabled);
     if (posthog) {
-      await posthog.captureStatelessPublic(distinctId, eventName, properties, options);
+      await posthog.captureStatelessPublic(distinctId, posthogName, properties, options);
     }
     if (iris) {
       const env = await irisEnvelope(distinctId, properties);
-      await iris.capture(env.distinctId, eventName, env.properties, options);
+      // Whichever id the first Iris event actually went out under — the alias
+      // watch needs it to know what to merge.
+      if (!irisSentAs) {
+        irisSentAs = env.distinctId;
+      }
+      await iris.capture(
+        env.distinctId,
+        resolveEventName(sourceEventName, irisEcommerceSpecEnabled),
+        env.properties,
+        options,
+      );
+      startIrisAliasWatch();
     }
-    await broadcast(eventName, properties);
+    // The dataLayer map keys off both naming schemes, so either works; PostHog's
+    // is used to keep existing dataLayer consumers unchanged.
+    await broadcast(posthogName, properties);
   }
 
   // Fan an identify out to every active sink. `prevDistinctId` is the anonymous
@@ -478,16 +538,18 @@ register(async (extensionApi) => {
     await identifyAll(init.data.customer.email, globalDistinctId)
   }
 
-  const resolveEventEcommerceName = (name: string) => {
-    if (!posthogEcommerceSpecEnabled) {
-      return name
-    }
-    const mapped = webPixelToPostHogEcommerceSpecMap[name]
-    if (!mapped) {
+  /**
+   * Shopify's event name, or its PostHog ecommerce-spec equivalent.
+   *
+   * @param useSpec that destination's own naming flag. Passing it in — rather
+   *   than reading one global — is what stops PostHog's setting reaching Iris.
+   */
+  const resolveEventName = (name: string, useSpec: boolean) => {
+    if (!useSpec) {
       return name;
     }
-    return mapped
-  }
+    return webPixelToPostHogEcommerceSpecMap[name] || name;
+  };
 
   const resolveEventEcommerceSpecBody = (event: PixelEvents[keyof PixelEvents]) => {
     if (!posthogEcommerceSpecEnabled) {
@@ -520,7 +582,6 @@ register(async (extensionApi) => {
       preprocessEvent(async (event, uuid, anonymous) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId();
-        const eventName = resolveEventEcommerceName(event.name);
         const checkoutData = (() => {
           const raw = { ...(event.data.checkout as unknown as Record<string, unknown>) };
           if (anonymous == true) {
@@ -546,7 +607,7 @@ register(async (extensionApi) => {
           return raw;
         })();
 
-        await captureAndBroadcast(distinctId, eventName, {
+        await captureAndBroadcast(distinctId, event.name, {
           ...featureFlags,
           ...initProperties,
           ...(anonymous == true && {
@@ -587,8 +648,7 @@ register(async (extensionApi) => {
       preprocessEvent(async (event, uuid, anonymous) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId()
-        const eventName = resolveEventEcommerceName(event.name);
-        captureAndBroadcast(distinctId, eventName,
+        captureAndBroadcast(distinctId, event.name,
           {
             ...featureFlags,
             ...initProperties,
@@ -627,8 +687,7 @@ register(async (extensionApi) => {
         // cannot set URL
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId()
-        const eventName = resolveEventEcommerceName(event.name)
-        captureAndBroadcast(distinctId, eventName,{
+        captureAndBroadcast(distinctId, event.name,{
           ...featureFlags,
           $session_id : sessionId,
           $configured_session_timeout_ms: sessionTimeoutMs,
@@ -657,8 +716,7 @@ register(async (extensionApi) => {
     preprocessEvent(async (event, uuid, anonymous) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
-      const eventName = resolveEventEcommerceName(event.name);
-      captureAndBroadcast(distinctId, eventName, {
+      captureAndBroadcast(distinctId, event.name, {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -691,8 +749,7 @@ register(async (extensionApi) => {
     preprocessEvent(async (event, uuid, anonymous) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
-      const eventName = resolveEventEcommerceName(event.name)
-      captureAndBroadcast(distinctId, eventName,{
+      captureAndBroadcast(distinctId, event.name,{
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -720,8 +777,7 @@ register(async (extensionApi) => {
     preprocessEvent(async (event, uuid, anonymous) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
-      const eventName = resolveEventEcommerceName(event.name)
-      captureAndBroadcast(distinctId, eventName, {
+      captureAndBroadcast(distinctId, event.name, {
         ...featureFlags,
         ...initProperties,
         ...(anonymous == true && {
@@ -750,8 +806,7 @@ register(async (extensionApi) => {
     preprocessEvent(async (event, uuid, anonymous) => {
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
-      const eventName = resolveEventEcommerceName(event.name);
-      captureAndBroadcast(distinctId, eventName, {
+      captureAndBroadcast(distinctId, event.name, {
         ...featureFlags,
         ...{
           ...initProperties,
@@ -783,8 +838,7 @@ register(async (extensionApi) => {
       
       const distinctId = await resolveDistinctId();
       const {sessionId,windowId} = await resolveSessionId()
-      const eventName = resolveEventEcommerceName(event.name);
-      captureAndBroadcast(distinctId, eventName,{
+      captureAndBroadcast(distinctId, event.name,{
         ...featureFlags,
           ...initProperties,
           ...(anonymous == true && {
@@ -813,7 +867,6 @@ register(async (extensionApi) => {
     'form_submitted',
     preprocessEvent(async (event, uuid, anonymous) => {
       const distinctId = await resolveDistinctId();
-      const eventName = resolveEventEcommerceName(event.name);
       const {sessionId,windowId} = await resolveSessionId()
       const emailRegex = /email/i;
       const [email] = event.data.element.elements
@@ -831,7 +884,7 @@ register(async (extensionApi) => {
           })
           .filter((el): el is [string, string] => !!el)
       );
-      await captureAndBroadcast(distinctId, eventName, {
+      await captureAndBroadcast(distinctId, event.name, {
         ...featureFlags,
         $session_id : sessionId,
         $configured_session_timeout_ms: sessionTimeoutMs,

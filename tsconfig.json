@@ -1,6 +1,5 @@
 {
   "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["**/*.check.ts"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "strict": true,
@@ -10,6 +9,10 @@
     "removeComments": false,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
+    // Checks import siblings as './x.ts' so `npx tsx` runs them directly. Without
+    // this they had to be excluded from typechecking entirely, which let a stale
+    // import in a check survive a green tsc — the checks rotted silently.
+    "allowImportingTsExtensions": true,
     "allowJs": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",

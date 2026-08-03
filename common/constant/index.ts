@@ -14,6 +14,8 @@ export class Constant {
   static readonly METAFIELD_KEY_IRIS_API_KEY = 'iris_api_key'
   static readonly METAFIELD_KEY_IRIS_API_HOST = 'iris_api_host'
   static readonly METAFIELD_KEY_IRIS_ENABLED = 'iris_enabled'
+  /** Iris's own event-naming flag. Unset means "inherit posthog_ecommerce_spec". */
+  static readonly METAFIELD_KEY_IRIS_ECOMMERCE_SPEC = 'iris_ecommerce_spec'
   static readonly IRIS_DEFAULT_API_HOST = 'https://mythic-analytics.gulp.workers.dev'
   /** Iris JS SDK config (see common/dto/iris-js-settings.dto.ts). */
   static readonly METAFIELD_KEY_IRIS_JS_CONFIG = 'iris_js_config'

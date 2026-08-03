@@ -1,5 +1,5 @@
 /**
- * Bounded wait for the Iris JS SDK to publish its identity to localStorage.
+ * Bounded watch for the Iris JS SDK to publish its identity to localStorage.
  *
  * Why: the Web Pixel and the SDK both start on page load, and the pixel wins.
  * Measured on a live storefront, `page_viewed` fires ~156ms before the SDK
@@ -9,32 +9,30 @@
  * event that carries the landing page and UTMs onto a separate person. That is
  * precisely the attribution split the identity handoff exists to prevent.
  *
- * Deliberately a bounded poll rather than an alias-after-the-fact: aliasing
- * works, but it's an extra event and the merge only resolves downstream (up to
- * ~24h for BigQuery identity resolution). Waiting keeps the first event correct
- * at source.
- *
- * The wait runs ONCE per page. After it resolves — found or timed out — every
- * subsequent event reads through immediately, so the cost is bounded per
- * pageview, not per event.
+ * This started life as a blocking wait in front of the first Iris send. That was
+ * the wrong shape: it delayed the landing pageview, and a delayed event is lost
+ * outright if the shopper leaves first — trading a mis-attributed pageview for a
+ * missing one. It now runs in the BACKGROUND while the event goes out
+ * immediately, and the caller links the two ids with an alias once one appears.
+ * Nothing is blocked and nothing is dropped.
  */
 
 /**
- * Should the pixel wait for the SDK at all?
+ * Should the pixel expect an Iris SDK on this page at all?
  *
  * Three states, not two. Web Pixel settings are a snapshot pushed by
  * recalculateWebPixel, and nothing pushes it automatically — an installed pixel
  * keeps its old settings until the merchant next saves something in the app. So a
  * newly declared field reads `undefined` on every existing install.
  *
- * Treating unknown as "off" would mean this fix does nothing until each merchant
+ * Treating unknown as "off" would mean this does nothing until each merchant
  * happens to save. Treating it as "maybe" costs a shop with the embed switched
- * off one bounded wait per page until its next save, and then it stops. Only an
- * explicit 'false' skips the wait outright.
+ * off some background polling until its next save, and then it stops. Nothing
+ * user-visible is delayed either way now that the watch is not blocking.
  *
  * @param setting raw `settings.iris_js_enabled`, always a string or undefined
  */
-export function shouldWaitForSdk(setting: unknown): boolean {
+export function shouldExpectSdk(setting: unknown): boolean {
   if (setting === undefined || setting === null || setting === '') {
     return true;
   }
@@ -42,27 +40,26 @@ export function shouldWaitForSdk(setting: unknown): boolean {
 }
 
 /**
- * ~3s total.
+ * ~12s total, polled every 200ms.
  *
- * Sized from a measurement on a live storefront, both timings on one clock:
+ * Measured on a live storefront, both timings on one clock, the SDK's identity
+ * lands ~3.1s into the page:
  *
- *   2144ms  pixel POST /e          (having waited a 1s budget and given up)
+ *   2144ms  pixel POST /e
  *   3153ms  SDK wrote distinct_id
  *
- * The first sizing used ~1s, from a figure inferred by diffing the uuidv7
- * timestamps embedded in the two ids. That was wrong: those encode when each id
- * was *minted*, not when the SDK *wrote* it to localStorage, and it understated
- * the gap by roughly an order of magnitude. Measure the write, not the mint.
+ * (An earlier sizing of ~1s came from diffing the uuidv7 timestamps embedded in
+ * the two ids. Those encode when each id was *minted*, not when the SDK *wrote*
+ * it to storage, and understated the gap by roughly an order of magnitude.
+ * Measure the write, not the mint.)
  *
- * 3s covers the observed ~3.1s with headroom. Known ceiling: this is a fixed
- * budget against a variable CDN, so a slow enough load still misses, and an Iris
- * event delayed 3s is lost outright if the shopper leaves first. PostHog is
- * unaffected either way — captureAndBroadcast sends to PostHog before this waits.
- * The durable fix is to send immediately and alias once the SDK id appears; this
- * is the cheap version that demonstrably works on a normal load.
+ * Because nothing waits on this any more, the budget can be generous enough to
+ * cover a slow CDN instead of being traded off against event latency. It stays
+ * bounded so a storefront with no SDK stops polling rather than looping for the
+ * life of the page.
  */
-export const SDK_IDENTITY_WAIT_ATTEMPTS = 30;
-export const SDK_IDENTITY_WAIT_INTERVAL_MS = 100;
+export const SDK_IDENTITY_WAIT_ATTEMPTS = 60;
+export const SDK_IDENTITY_WAIT_INTERVAL_MS = 200;
 
 export interface WaitDeps {
   /** Reads the SDK's distinct id. Returns null/'' when it isn't there yet. */
@@ -96,20 +93,4 @@ export async function waitForSdkIdentity({
     }
   }
   return null;
-}
-
-/**
- * Wraps `waitForSdkIdentity` so at most one wait ever runs.
- *
- * Without this every event on a storefront where the SDK never appears would pay
- * the full timeout — a second per event, forever.
- */
-export function onceWaiter(deps: WaitDeps): () => Promise<string | null> {
-  let pending: Promise<string | null> | null = null;
-  return () => {
-    if (!pending) {
-      pending = waitForSdkIdentity(deps);
-    }
-    return pending;
-  };
 }

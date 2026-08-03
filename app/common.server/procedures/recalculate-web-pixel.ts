@@ -24,6 +24,14 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
   const irisApiHost = currentAppInstallation.iris_api_host?.value
   const irisEnabled = currentAppInstallation.iris_enabled?.value == 'true'
   const irisJsEnabled = currentAppInstallation.iris_js_feature_toggle?.value == 'true'
+  // Unset means "inherit PostHog's", so an existing shop sees no change in what
+  // Iris receives. `?.value` is undefined only when the metafield has never been
+  // written — an explicit 'false' is respected.
+  const irisEcommerceSpecRaw = currentAppInstallation.iris_ecommerce_spec?.value
+  const irisEcommerceSpec =
+    irisEcommerceSpecRaw === undefined || irisEcommerceSpecRaw === null
+      ? posthogEcommerceSpec
+      : irisEcommerceSpecRaw == 'true'
 
   const webPixelFeatureToggle = currentAppInstallation.web_pixel_feature_toggle?.jsonValue == true
   const dtoResult = WebPixelSettingsSchema.safeParse({
@@ -45,6 +53,7 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     ...(irisApiHost && { iris_api_host: irisApiHost }),
     iris_enabled: !!irisEnabled,
     iris_js_enabled: !!irisJsEnabled,
+    iris_ecommerce_spec: !!irisEcommerceSpec,
   } as WebPixelSettings);
   if (!webPixelFeatureToggle) {
     if (!shopifyWebPixel?.id) {
@@ -78,8 +87,15 @@ export async function recalculateWebPixel(graphq: AdminGraphqlClient): Promise<{
     return { status: 'disconnected' };
   }
 
-  const { posthog_api_key, iris_api_key, iris_api_host, iris_enabled, iris_js_enabled, ...eventsSettings } =
-    dtoResult.data;
+  const {
+    posthog_api_key,
+    iris_api_key,
+    iris_api_host,
+    iris_enabled,
+    iris_js_enabled,
+    iris_ecommerce_spec,
+    ...eventsSettings
+  } = dtoResult.data;
 
   const eventsSettingsValues = Object.values(eventsSettings);
   const allEventsDisabled = eventsSettingsValues.every((value) => value == 'false');

@@ -8,8 +8,8 @@
  * events keep flowing, they just carry more than they should.
  */
 import assert from 'node:assert';
-// @ts-expect-error - plain JS asset, no types; that's the point (the storefront
-// imports the same file, so a .d.ts would be a second thing to keep in sync).
+// Plain JS asset, deliberately untyped: the storefront imports the very same
+// file, so a .d.ts would be a second thing to keep in sync.
 import {
   shopifyBaseConfig,
   irisPrivacyOverrides,

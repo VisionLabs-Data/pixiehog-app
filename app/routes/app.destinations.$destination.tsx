@@ -214,15 +214,20 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
       type: 'json',
       value: JSON.stringify(parsed.data),
     });
-  } else if (payload.step === 'events' && payload.destination === 'posthog') {
+  } else if (payload.step === 'events') {
     const parsed = WebPixelPostHogEcommerceSpecSchema.safeParse({
-      posthog_ecommerce_spec: payload.posthog_ecommerce_spec,
+      posthog_ecommerce_spec: payload.ecommerce_spec,
     });
     if (!parsed.success) {
       return json({ ok: false, message: 'Invalid ecommerce spec value' }, { status: 400 });
     }
+    // Each destination writes its OWN naming key. Iris's is unset until saved
+    // here, and unset means "inherit PostHog's" — see recalculateWebPixel.
     sets.push({
-      key: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
+      key:
+        payload.destination === 'iris'
+          ? Constant.METAFIELD_KEY_IRIS_ECOMMERCE_SPEC
+          : Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
       namespace,
       ownerId,
       type: 'boolean',
@@ -496,13 +501,20 @@ function GeneralPanel({ dest, install }: PanelProps) {
 
 function EventsPanel({ dest, install }: PanelProps) {
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
-  const specInitial = install.web_pixel_posthog_ecommerce_spec?.value === 'true';
+  const posthogSpec = install.web_pixel_posthog_ecommerce_spec?.value === 'true';
+  // Iris's flag is unset until it's been saved here, and unset means "inherit
+  // PostHog's" — the pixel used to rename once for everyone, so defaulting this
+  // way keeps existing shops' Iris data on exactly the names it already had.
+  const irisSpecRaw = install.iris_ecommerce_spec?.value;
+  const irisInherits = irisSpecRaw === undefined || irisSpecRaw === null;
+  const specInitial = dest.id === 'iris' ? (irisInherits ? posthogSpec : irisSpecRaw === 'true') : posthogSpec;
+
   const [spec, setSpec] = useState(specInitial);
   const saving = fetcher.state !== 'idle';
-  // PostHog-only: renames the source's Shopify event names into PostHog's
-  // ecommerce spec on the way out. Iris receives the Shopify names either way,
-  // which is why this control belongs to the destination and not the source.
-  const renaming = dest.id === 'posthog' && spec;
+  // Renames the source's Shopify event names into PostHog's ecommerce spec on the
+  // way out to THIS destination. Each destination has its own flag: renaming is a
+  // property of where the events are going, not of the source.
+  const renaming = spec;
 
   const webEvents = useMemo(() => {
     const settings = (install.web_pixel_settings?.jsonValue as Record<string, boolean> | null) ?? {};
@@ -526,40 +538,45 @@ function EventsPanel({ dest, install }: PanelProps) {
           </Text>
         </BlockStack>
 
-        {dest.id === 'posthog' && (
-          <>
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">
-                Event naming
-              </Text>
-              {fetcher.data && (
-                <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
-              )}
-              <Checkbox
-                label="Use PostHog's ecommerce spec event names"
-                helpText="Renames events for PostHog only — for example product_viewed becomes Product Viewed. Other destinations keep Shopify's names."
-                checked={spec}
-                onChange={setSpec}
-              />
-              <InlineStack>
-                <Button
-                  variant="primary"
-                  loading={saving}
-                  disabled={spec === specInitial || saving}
-                  onClick={() =>
-                    fetcher.submit(
-                      JSON.stringify({ step: 'events', destination: 'posthog', posthog_ecommerce_spec: spec }),
-                      { method: 'POST', encType: 'application/json' },
-                    )
-                  }
-                >
-                  Save
-                </Button>
-              </InlineStack>
-            </BlockStack>
-            <Divider />
-          </>
-        )}
+        <BlockStack gap="200">
+          <InlineStack gap="200" blockAlign="center">
+            <Text as="h3" variant="headingSm">
+              Event naming
+            </Text>
+            {dest.id === 'iris' && irisInherits && <Badge>Following PostHog</Badge>}
+          </InlineStack>
+          {fetcher.data && (
+            <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
+          )}
+          <Checkbox
+            label="Use PostHog's ecommerce spec event names"
+            helpText={`Renames events on the way to ${dest.name} only — for example product_viewed becomes Product Viewed. Every other destination keeps its own setting.`}
+            checked={spec}
+            onChange={setSpec}
+          />
+          {dest.id === 'iris' && irisInherits && (
+            <Text as="p" variant="bodySm" tone="subdued">
+              Iris has never had its own setting, so it currently follows PostHog&rsquo;s. Saving here
+              gives it one and the two stop moving together.
+            </Text>
+          )}
+          <InlineStack>
+            <Button
+              variant="primary"
+              loading={saving}
+              disabled={(spec === specInitial && !irisInherits) || saving}
+              onClick={() =>
+                fetcher.submit(
+                  JSON.stringify({ step: 'events', destination: dest.id, ecommerce_spec: spec }),
+                  { method: 'POST', encType: 'application/json' },
+                )
+              }
+            >
+              Save
+            </Button>
+          </InlineStack>
+        </BlockStack>
+        <Divider />
 
         <BlockStack gap="200">
           <InlineStack align="space-between" blockAlign="center">

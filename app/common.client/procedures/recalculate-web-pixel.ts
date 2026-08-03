@@ -28,6 +28,14 @@ export async function recalculateWebPixel(): Promise<
   const irisApiHost = response.currentAppInstallation.iris_api_host?.value
   const irisEnabled = response.currentAppInstallation.iris_enabled?.value == 'true'
   const irisJsEnabled = response.currentAppInstallation.iris_js_feature_toggle?.value == 'true'
+  // Unset means "inherit PostHog's", so an existing shop sees no change in what
+  // Iris receives. `?.value` is undefined only when the metafield has never been
+  // written — an explicit 'false' is respected.
+  const irisEcommerceSpecRaw = response.currentAppInstallation.iris_ecommerce_spec?.value
+  const irisEcommerceSpec =
+    irisEcommerceSpecRaw === undefined || irisEcommerceSpecRaw === null
+      ? posthogEcommerceSpec
+      : irisEcommerceSpecRaw == 'true'
   type ValueOf<T> = T[keyof T];
   const dataCollectionStrategyKey = response.currentAppInstallation.data_collection_strategy
     ?.value as ValueOf<DataCollectionStrategy>;
@@ -52,6 +60,7 @@ export async function recalculateWebPixel(): Promise<
     ...(irisApiHost && { iris_api_host: irisApiHost }),
     iris_enabled: !!irisEnabled,
     iris_js_enabled: !!irisJsEnabled,
+    iris_ecommerce_spec: !!irisEcommerceSpec,
   } as WebPixelSettings);
 
   if (!webPixelFeatureToggle) {

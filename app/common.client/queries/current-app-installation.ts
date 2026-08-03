@@ -19,6 +19,7 @@ export const queryCurrentAppInstallation = async () => {
         $irisApiKeyKey: String!
         $irisApiHostKey: String!
         $irisEnabledKey: String!
+        $irisEcommerceSpecKey: String!
         $irisJsConfigKey: String!
         $irisJsFeatureToggleKey: String!
       ) {
@@ -102,6 +103,12 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
+          iris_ecommerce_spec: metafield(namespace: $namespace, key: $irisEcommerceSpecKey) {
+            key
+            jsonValue
+            value
+            type
+          },
           iris_js_config: metafield(namespace: $namespace, key: $irisJsConfigKey) {
             key
             jsonValue
@@ -133,6 +140,7 @@ export const queryCurrentAppInstallation = async () => {
         irisApiKeyKey: Constant.METAFIELD_KEY_IRIS_API_KEY,
         irisApiHostKey: Constant.METAFIELD_KEY_IRIS_API_HOST,
         irisEnabledKey: Constant.METAFIELD_KEY_IRIS_ENABLED,
+        irisEcommerceSpecKey: Constant.METAFIELD_KEY_IRIS_ECOMMERCE_SPEC,
         irisJsConfigKey: Constant.METAFIELD_KEY_IRIS_JS_CONFIG,
         irisJsFeatureToggleKey: Constant.METAFIELD_KEY_IRIS_JS_FEATURE_TOGGLE,
       },

@@ -7,25 +7,24 @@
 import assert from 'node:assert';
 import {
   waitForSdkIdentity,
-  onceWaiter,
-  shouldWaitForSdk,
+  shouldExpectSdk,
   SDK_IDENTITY_WAIT_ATTEMPTS,
 } from './wait-for-sdk-identity';
 
-/* ── shouldWaitForSdk: unknown must not be read as "off" ─────────────────── */
+/* ── shouldExpectSdk: unknown must not be read as "off" ──────────────────── */
 // An installed pixel keeps stale settings until the merchant next saves, so a
 // newly added field is absent on every existing install. Reading that as "off"
 // would silently disable the fix everywhere.
 for (const unknown of [undefined, null, '']) {
-  assert.strictEqual(shouldWaitForSdk(unknown), true, `${JSON.stringify(unknown)} must wait`);
+  assert.strictEqual(shouldExpectSdk(unknown), true, `${JSON.stringify(unknown)} must expect an SDK`);
 }
-assert.strictEqual(shouldWaitForSdk('true'), true, "'true' waits");
-assert.strictEqual(shouldWaitForSdk('false'), false, "an explicit 'false' skips the wait");
+assert.strictEqual(shouldExpectSdk('true'), true, "'true' expects one");
+assert.strictEqual(shouldExpectSdk('false'), false, "an explicit 'false' does not");
 // Pixel settings are always strings, but nothing should slip through as truthy.
-assert.strictEqual(shouldWaitForSdk('False'), false, 'only exact "true" enables');
-assert.strictEqual(shouldWaitForSdk('0'), false);
-assert.strictEqual(shouldWaitForSdk(false), false, 'a real boolean false still skips');
-assert.strictEqual(shouldWaitForSdk(true), true, 'a real boolean true still waits');
+assert.strictEqual(shouldExpectSdk('False'), false, 'only exact "true" enables');
+assert.strictEqual(shouldExpectSdk('0'), false);
+assert.strictEqual(shouldExpectSdk(false), false, 'a real boolean false still does not');
+assert.strictEqual(shouldExpectSdk(true), true, 'a real boolean true still does');
 
 /** A reader that yields `value` from attempt `readyOn` (1-based) onward. */
 function readerReadyOn(readyOn: number, value = 'sdk-id') {
@@ -106,27 +105,7 @@ async function main() {
     assert.strictEqual(state.reads, 2);
   }
 
-  // onceWaiter: the whole point. A storefront with no SDK must pay the timeout
-  // once, not once per event.
-  {
-    const r = readerReadyOn(Number.POSITIVE_INFINITY);
-    const s = fakeSleep();
-    const waiter = onceWaiter({ read: r.read, sleep: s.sleep });
-    const results = await Promise.all([waiter(), waiter(), waiter()]);
-    assert.deepStrictEqual(results, [null, null, null]);
-    assert.strictEqual(r.state.reads, SDK_IDENTITY_WAIT_ATTEMPTS, 'three callers, one wait');
-  }
 
-  // And a later caller still gets the found value without re-reading.
-  {
-    const r = readerReadyOn(2);
-    const s = fakeSleep();
-    const waiter = onceWaiter({ read: r.read, sleep: s.sleep });
-    assert.strictEqual(await waiter(), 'sdk-id');
-    const readsAfterFirst = r.state.reads;
-    assert.strictEqual(await waiter(), 'sdk-id', 'the result is cached');
-    assert.strictEqual(r.state.reads, readsAfterFirst, 'no further reads');
-  }
 
   console.log('web-pixel wait-for-sdk-identity: bounded, sleeps only between tries, waits once ✓');
 }
