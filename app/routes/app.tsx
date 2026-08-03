@@ -32,7 +32,9 @@ function PosthogInit() {
       posthog.get_distinct_id(), // Replace 'distinct_id' with your user's unique identifier
       { shop: shopify.config.shop } // optional: set additional person properties
     );
-  }, []);
+    // The shop never changes within a session, so this is equivalent to [] — it
+    // just stops the exhaustive-deps warning masking a real one later.
+  }, [shopify.config.shop]);
   return null;
 }
 

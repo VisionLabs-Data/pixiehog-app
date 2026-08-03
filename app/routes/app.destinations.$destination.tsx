@@ -57,9 +57,10 @@ import { irisJsSettingsWithValues } from '../iris-js-settings-rows';
 import { PosthogApiHostSchema } from '../../common/dto/posthog-api-host.dto';
 import { posthogApiKeyPrimitive } from '../../common/dto/posthog-api-key.dto';
 import { WebPixelPostHogEcommerceSpecSchema } from '../../common/dto/web-pixel-posthog-ecommerce-spec';
+import type { JsWebPosthogConfig } from '../../common/dto/js-web-settings.dto';
 import { JsWebPosthogConfigSchema } from '../../common/dto/js-web-settings.dto';
-import { defaultJsWebPosthogSettings } from './app.js-web-posthog-settings/default-js-web-settings';
-import type { JsWebPosthogSettingChoice } from './app.js-web-posthog-settings/interface/setting-row.interface';
+import type { JsWebPosthogSettingChoice } from '../js-web-posthog-settings-rows';
+import { jsWebPosthogSettingsWithValues } from '../js-web-posthog-settings-rows';
 import { irisApiHostPrimitive, irisApiKeyPrimitive } from '../../common/dto/iris-settings.dto';
 import { metafieldsSet as clientMetafieldsSet } from '../common.client/mutations/metafields-set';
 import { metafieldsDelete as clientMetafieldsDelete } from '../common.client/mutations/metafields-delete';
@@ -946,21 +947,11 @@ interface Step {
  */
 function PostHogSdkConfigPanel({ install, jsWebEmbedActive, themeEditorUrl, themeExtensionUuid }: PanelProps) {
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
-  const saved = install.js_web_posthog_config?.jsonValue as Record<string, unknown> | null | undefined;
+  const saved = install.js_web_posthog_config?.jsonValue as Partial<JsWebPosthogConfig> | null | undefined;
   const enabledInitial = install.js_web_posthog_feature_toggle?.value === 'true';
 
   const [enabled, setEnabled] = useState(enabledInitial);
-  const [rows, setRows] = useState(() =>
-    defaultJsWebPosthogSettings.map(
-      (row) =>
-        ({
-          ...row,
-          // Only override the schema default when a value was actually saved —
-          // `?? row.value` would swallow a deliberately-saved `false`.
-          value: saved && row.key in saved ? (saved as any)[row.key] : row.value,
-        }) as JsWebPosthogSettingChoice,
-    ),
-  );
+  const [rows, setRows] = useState(() => jsWebPosthogSettingsWithValues(saved));
   const [query, setQuery] = useState('');
   const saving = fetcher.state !== 'idle';
 

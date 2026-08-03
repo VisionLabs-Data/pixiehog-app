@@ -6,9 +6,11 @@
  *
  * Kept as a route rather than deleted because this path was in the nav for a
  * long time and is linked from older screenshots and bookmarks; 404ing it would
- * be a worse answer than moving people along. The sibling
- * `default-js-web-settings.ts` and `interface/` in this directory are still the
- * real implementation — the destination panel imports them from here.
+ * be a worse answer than moving people along.
+ *
+ * A flat file, not a directory: the row-derivation modules that used to live
+ * alongside it moved to app/js-web-posthog-settings-rows.ts, next to their Iris
+ * sibling, leaving nothing here but the redirect.
  */
 import { redirect } from '@remix-run/node';
 
