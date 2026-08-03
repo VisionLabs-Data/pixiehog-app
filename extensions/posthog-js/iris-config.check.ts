@@ -1,7 +1,7 @@
 /**
  * Checks the strategy → SDK-config mapping the Iris theme embed applies.
  *
- * Run with: npx tsx extensions/posthog-js/privacy.check.ts
+ * Run with: npx tsx extensions/posthog-js/iris-config.check.ts
  *
  * This is the one piece of the embed worth checking without a browser: it decides
  * whether identifiable data leaves a storefront, and getting it wrong is silent —
@@ -10,7 +10,12 @@
 import assert from 'node:assert';
 // @ts-expect-error - plain JS asset, no types; that's the point (the storefront
 // imports the same file, so a .d.ts would be a second thing to keep in sync).
-import { irisPrivacyOverrides, analyticsAllowed, applyOverrides } from './assets/privacy.js';
+import {
+  shopifyBaseConfig,
+  irisPrivacyOverrides,
+  analyticsAllowed,
+  applyOverrides,
+} from './assets/iris-config.js';
 
 /* ── anonymized: nothing that identifies a person may be on ──────────────── */
 const anon = irisPrivacyOverrides('anonymized');
@@ -106,4 +111,35 @@ const original = { auto_form_identify: true };
 applyOverrides(original, anon);
 assert.strictEqual(original.auto_form_identify, true, 'applyOverrides must not mutate its input');
 
-console.log('iris-js privacy: strategy mapping and consent reads are safe ✓');
+/* ── shopifyBaseConfig: the platform-level defaults ──────────────────────── */
+const base = shopifyBaseConfig();
+// The double-count that started this: the Web Pixel already sends page_viewed.
+assert.strictEqual(base.capture_pageview, false, 'the SDK must not also capture pageviews');
+assert.strictEqual(base.capture_spa_pageview, false, 'nor SPA pageviews');
+assert.strictEqual(base.capture_pageleave, false, 'nor pageleaves');
+// localStorage only: the pixel's identity handoff reads nothing else.
+assert.strictEqual(base.persistence, 'localStorage', 'identity must live in localStorage alone');
+
+// It is a BASE layer — a merchant who deliberately wants SDK pageviews wins.
+const merged = Object.assign(shopifyBaseConfig(), { capture_pageview: true, batch_size: 50 });
+assert.strictEqual(merged.capture_pageview, true, 'saved config must override the base');
+assert.strictEqual(merged.batch_size, 50, 'saved-only keys survive');
+assert.strictEqual(merged.persistence, 'localStorage', 'untouched base keys survive');
+
+// A fresh object each call — a caller mutating it must not poison the next page.
+const a = shopifyBaseConfig();
+a.capture_pageview = true;
+assert.strictEqual(shopifyBaseConfig().capture_pageview, false, 'must not return a shared object');
+
+// Privacy overrides are applied AFTER the merge, so they beat saved config.
+const withOverrides = applyOverrides(
+  Object.assign(shopifyBaseConfig(), { auto_form_identify: true }),
+  irisPrivacyOverrides('anonymized'),
+);
+assert.strictEqual(
+  withOverrides.auto_form_identify,
+  false,
+  'anonymized must win over a merchant who enabled form identification',
+);
+
+console.log('iris-config: base defaults + strategy mapping + consent reads are safe ✓');

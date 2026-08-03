@@ -41,9 +41,8 @@ interface NavItem {
 }
 
 // Mirrors the production IA: sources own what's shared, destinations own what's
-// theirs. The one item that is neither — the PostHog JS SDK page — is nested
-// under PostHog rather than given a top-level slot, because that's where it is
-// reached from in the embedded app.
+// theirs. Both destinations carry their own JS SDK config as a step in their
+// rail, so neither needs a top-level entry for it.
 const NAV: { group: string | null; items: NavItem[] }[] = [
   {
     group: null,
@@ -61,7 +60,6 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
     items: [
       { to: '/preview/destinations/posthog', label: 'PostHog' },
       { to: '/preview/destinations/iris', label: 'Iris' },
-      { to: '/preview/js-web', label: '↳ PostHog JS SDK' },
     ],
   },
 ];

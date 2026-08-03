@@ -1,8 +1,8 @@
 /**
- * Maps VizHog's source-level data collection strategy onto Mythic SDK config.
+ * Builds the config VizHog passes to `window.mythic.init()`.
  *
  * Kept as a pure module rather than inline liquid so it can be checked without a
- * browser — see extensions/posthog-js/privacy.check.ts.
+ * browser — see extensions/posthog-js/iris-config.check.ts.
  *
  * Shopify's Customer Privacy API has four independent categories (analytics,
  * marketing, preferences, sale_of_data). Only `analytics` gates analytics
@@ -14,6 +14,37 @@
  * banner ever shown. `requireConsent: true` on a US-only shop therefore grants
  * immediately. That's correct, not a bug.
  */
+
+/**
+ * Defaults that must hold on a Shopify storefront whatever the merchant saved.
+ *
+ * These are a BASE layer — saved config overrides them — and they exist because
+ * the admin form's defaults are applied at *save* time. A shop that switched the
+ * embed on without ever opening the SDK Config page stores `{}`, and the SDK then
+ * falls back to its own documented defaults. Verified live: that shop was getting
+ * `capture_pageview: true` from the SDK *and* `page_viewed` from the Web Pixel —
+ * every pageview counted twice, under two different visitor ids.
+ *
+ * Only settings where Shopify's platform makes the SDK default wrong belong here.
+ * Everything else is the merchant's business and lives in the schema.
+ *
+ * @returns {Record<string, unknown>}
+ */
+export function shopifyBaseConfig() {
+  return {
+    // The Web Pixel already emits page_viewed for every page, including ones the
+    // SDK can't see (checkout, thank-you, order status). Letting the SDK capture
+    // pageviews too double-counts every one of them.
+    capture_pageview: false,
+    capture_spa_pageview: false,
+    capture_pageleave: false,
+    // The pixel's identity handoff reads the SDK's ids out of localStorage and
+    // nothing else, so localStorage is the single source of truth for identity.
+    // The SDK's own default also writes a cookie, giving two stores where only
+    // one is consulted at that boundary.
+    persistence: 'localStorage',
+  };
+}
 
 /**
  * SDK config overrides the strategy forces, regardless of what the merchant set

@@ -4,9 +4,8 @@ const PAGES = [
   { to: '/preview/tracking', label: 'My Tracking', desc: 'Shopify Web + Webhooks → PostHog + Iris wiring diagram' },
   { to: '/preview/custom-events', label: 'Custom Events', desc: 'Catalog of every event sent, and to which destination' },
   { to: '/preview/web-pixel', label: 'Source · Shopify Web', desc: 'Events captured, plus the settings shared by all destinations' },
-  { to: '/preview/destinations/posthog', label: 'Destination · PostHog', desc: 'Credentials, event naming, client-side; consent is read-only' },
-  { to: '/preview/destinations/iris', label: 'Destination · Iris', desc: 'As above, plus the generated JS SDK config form' },
-  { to: '/preview/js-web', label: 'Destination · PostHog JS SDK', desc: 'Client-side posthog-js configuration' },
+  { to: '/preview/destinations/posthog', label: 'Destination · PostHog', desc: 'Credentials, event naming, JS SDK config; consent is read-only' },
+  { to: '/preview/destinations/iris', label: 'Destination · Iris', desc: 'The same steps, with the Iris SDK config form' },
 ];
 
 export default function PreviewIndex() {

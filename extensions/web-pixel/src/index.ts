@@ -233,11 +233,20 @@ register(async (extensionApi) => {
    * readable from the sandbox on both storefront and checkout pages.
    *
    * PostHog's payload is deliberately untouched — this only re-points the Iris
-   * sink. ponytail: assumes the default `mythic_` storage prefix; a merchant who
-   * sets a custom `__mythic_global_name` falls back to the pixel's own ids —
-   * still correct, just not stitched to the storefront session.
+   * sink.
+   *
+   * The prefix includes the publishable key. Verified against a live storefront:
+   * the SDK writes `mythic_pk_<key>_session`, not `mythic_session`. This code
+   * originally assumed the shorter form, so every read returned null, the pixel
+   * silently fell back to its own ids, and one visit landed as two people — the
+   * exact failure the handoff exists to prevent. The symptom was invisible from
+   * the outside: events flowed, they were just attributed twice.
+   *
+   * ponytail: assumes the default `mythic` global name. A merchant who sets a
+   * custom `__mythic_global_name` gets a different prefix and falls back to the
+   * pixel's own ids — still correct, just not stitched.
    */
-  const IRIS_SDK_PREFIX = 'mythic_';
+  const IRIS_SDK_PREFIX = `mythic_${irisApiKey}_`;
 
   async function readIrisSdkValue<T>(key: string): Promise<T | null> {
     try {

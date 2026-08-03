@@ -154,10 +154,27 @@ export const IrisJsConfigSchema = z.object({
 
   /* ── Persistence ──────────────────────────────────────────────────────── */
 
+  // Deviates from the SDK default of 'localStorage+cookie', deliberately.
+  //
+  // The Web Pixel stitches its Iris events to the SDK's session by reading
+  // `mythic_*` out of localStorage (see the identity handoff in
+  // extensions/web-pixel/src/index.ts). It never reads the cookie — the sandbox
+  // exposes `browser.cookie`, so it could, but it doesn't. With both stores
+  // live, identity exists in two places and only one is consulted at that
+  // boundary: clear one (privacy tool, ITP, a shopper's own housekeeping) and
+  // the SDK and the pixel disagree about who the visitor is.
+  //
+  // Nothing is lost by dropping the cookie. It's set from JavaScript, so Safari
+  // caps it at 7 days exactly like localStorage — the durability argument for
+  // cookies doesn't apply. Shopify checkout is same-origin with the storefront,
+  // so localStorage survives into checkout. And one less cookie is one less
+  // thing to justify in a consent review.
   persistence: z
     .enum(['localStorage+cookie', 'localStorage', 'sessionStorage', 'cookie', 'memory'])
-    .describe('Where the SDK stores the visitor and session identifiers.')
-    .default('localStorage+cookie'),
+    .describe(
+      'Where the SDK stores the visitor and session identifiers. localStorage is recommended on Shopify: it is the only store the Web Pixel reads when stitching its events to the SDK session.',
+    )
+    .default('localStorage'),
 
   persistence_name: z
     .string()

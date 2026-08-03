@@ -33,6 +33,7 @@ export interface TrackingInstallation {
   /** PostHog-only event renaming, owned by the PostHog destination. */
   web_pixel_posthog_ecommerce_spec?: MetafieldValue | null;
   js_web_posthog_feature_toggle?: MetafieldValue | null;
+  js_web_posthog_config?: MetafieldValue | null;
   iris_api_key?: MetafieldValue | null;
   iris_api_host?: MetafieldValue | null;
   iris_enabled?: MetafieldValue | null;

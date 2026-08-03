@@ -57,6 +57,9 @@ import { irisJsSettingsWithValues } from '../iris-js-settings-rows';
 import { PosthogApiHostSchema } from '../../common/dto/posthog-api-host.dto';
 import { posthogApiKeyPrimitive } from '../../common/dto/posthog-api-key.dto';
 import { WebPixelPostHogEcommerceSpecSchema } from '../../common/dto/web-pixel-posthog-ecommerce-spec';
+import { JsWebPosthogConfigSchema } from '../../common/dto/js-web-settings.dto';
+import { defaultJsWebPosthogSettings } from './app.js-web-posthog-settings/default-js-web-settings';
+import type { JsWebPosthogSettingChoice } from './app.js-web-posthog-settings/interface/setting-row.interface';
 import { irisApiHostPrimitive, irisApiKeyPrimitive } from '../../common/dto/iris-settings.dto';
 import { metafieldsSet as clientMetafieldsSet } from '../common.client/mutations/metafields-set';
 import { metafieldsDelete as clientMetafieldsDelete } from '../common.client/mutations/metafields-delete';
@@ -189,6 +192,27 @@ export const clientAction = async ({ request }: ClientActionFunctionArgs) => {
       type: 'json',
       value: JSON.stringify(parsed.data),
     });
+  } else if (payload.step === 'posthog-sdk-config') {
+    const { step, js_web_posthog_feature_toggle, ...config } = payload;
+    const parsed = JsWebPosthogConfigSchema.safeParse(config);
+    if (!parsed.success) {
+      const bad = Object.keys(parsed.error.flatten().fieldErrors).join(', ');
+      return json({ ok: false, message: `Invalid SDK settings: ${bad}` }, { status: 400 });
+    }
+    sets.push({
+      key: Constant.METAFIELD_KEY_JS_WEB_POSTHOG_FEATURE_TOGGLE,
+      namespace,
+      ownerId,
+      type: 'boolean',
+      value: String(js_web_posthog_feature_toggle === true || js_web_posthog_feature_toggle === 'true'),
+    });
+    sets.push({
+      key: Constant.METAFIELD_KEY_JS_WEB_POSTHOG_CONFIG,
+      namespace,
+      ownerId,
+      type: 'json',
+      value: JSON.stringify(parsed.data),
+    });
   } else if (payload.step === 'events' && payload.destination === 'posthog') {
     const parsed = WebPixelPostHogEcommerceSpecSchema.safeParse({
       posthog_ecommerce_spec: payload.posthog_ecommerce_spec,
@@ -239,7 +263,42 @@ interface PanelProps {
   themeExtensionUuid: string;
 }
 
-function OverviewPanel({ dest, install }: PanelProps) {
+/**
+ * Names the web-path legs that are actually switched on for a destination.
+ *
+ * Was a hardcoded string per destination, which went stale the moment Iris grew
+ * a second web leg (the SDK theme embed) — the Overview kept describing only the
+ * pixel. It also leaked a source filename, `pixiehog-iris.ts`, into merchant-
+ * facing copy.
+ */
+function describeWebPath(
+  dest: DestinationView,
+  install: TrackingInstallation,
+  jsWebEmbedActive: boolean,
+  irisEmbedActive: boolean,
+): string {
+  const webPixelOn = install.web_pixel_feature_toggle?.value === 'true';
+  const legs: string[] = [];
+
+  if (dest.id === 'posthog') {
+    if (webPixelOn) legs.push('Web Pixel');
+    if (install.js_web_posthog_feature_toggle?.value === 'true' && jsWebEmbedActive) {
+      legs.push('PostHog JS theme embed');
+    }
+  } else {
+    // The pixel only forwards to Iris when the Iris sink itself is enabled.
+    if (webPixelOn && install.iris_enabled?.value === 'true') legs.push('Web Pixel');
+    if (install.iris_js_feature_toggle?.value === 'true' && irisEmbedActive) {
+      legs.push('Iris SDK theme embed');
+    }
+  }
+
+  return legs.length
+    ? `${legs.join(' + ')}, in the shopper’s browser`
+    : 'Nothing is collecting in the browser';
+}
+
+function OverviewPanel({ dest, install, jsWebEmbedActive, irisEmbedActive }: PanelProps) {
   const strategy = install.data_collection_strategy?.value || 'anonymized';
   return (
     <Card>
@@ -250,8 +309,8 @@ function OverviewPanel({ dest, install }: PanelProps) {
           </Text>
           <Text as="p" tone="subdued">
             {dest.id === 'posthog'
-              ? 'PostHog receives storefront events from the Web Pixel and order events from the Shopify webhook pipeline.'
-              : 'Iris receives storefront events from the Web Pixel dual-sink and authoritative order events straight from Shopify webhooks.'}
+              ? 'PostHog receives storefront events in the browser, and order events server-side from the Shopify webhook pipeline.'
+              : 'Iris receives storefront events in the browser — from the Web Pixel, from its own JS SDK, or both — plus authoritative order events server-side from Shopify webhooks.'}
           </Text>
         </BlockStack>
 
@@ -275,12 +334,10 @@ function OverviewPanel({ dest, install }: PanelProps) {
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
                     {path === 'Web'
-                      ? dest.id === 'posthog'
-                        ? 'Web Pixel + JS theme embed, in the shopper’s browser'
-                        : 'Web Pixel dual-sink (pixiehog-iris.ts)'
+                      ? describeWebPath(dest, install, jsWebEmbedActive, irisEmbedActive)
                       : dest.id === 'posthog'
                         ? 'Shopify webhooks → Pub/Sub → Cloudflare worker'
-                        : 'Shopify webhooks → /webhooks/orders → Iris /ingest'}
+                        : 'Shopify webhooks → Iris, for every order'}
                   </Text>
                 </BlockStack>
                 <Badge tone={active ? 'success' : undefined}>{active ? 'On' : 'Off'}</Badge>
@@ -675,7 +732,7 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive, irisEmbedActive }: P
               </Banner>
             )}
             <InlineStack gap="200">
-              <Button variant="primary" url="/app/js-web-posthog-settings">
+              <Button variant="primary" url="/app/destinations/posthog?step=sdk-config">
                 Configure PostHog JS SDK
               </Button>
               <Button url="/app/web-pixel-settings">Shopify Web source</Button>
@@ -879,6 +936,153 @@ interface Step {
   Panel: (props: PanelProps) => JSX.Element;
 }
 
+/**
+ * PostHog's JS SDK config, as a rail step.
+ *
+ * It used to live at /app/js-web-posthog-settings, reached by a button from the
+ * Client-Side Tracking step, while Iris's equivalent was a step in this rail —
+ * so the two destinations had different shapes and different step counts (3/3 vs
+ * 4/4) for the same kind of setup. Same rail now; that route redirects here.
+ */
+function PostHogSdkConfigPanel({ install, jsWebEmbedActive, themeEditorUrl, themeExtensionUuid }: PanelProps) {
+  const fetcher = useFetcher<{ ok: boolean; message: string }>();
+  const saved = install.js_web_posthog_config?.jsonValue as Record<string, unknown> | null | undefined;
+  const enabledInitial = install.js_web_posthog_feature_toggle?.value === 'true';
+
+  const [enabled, setEnabled] = useState(enabledInitial);
+  const [rows, setRows] = useState(() =>
+    defaultJsWebPosthogSettings.map(
+      (row) =>
+        ({
+          ...row,
+          // Only override the schema default when a value was actually saved —
+          // `?? row.value` would swallow a deliberately-saved `false`.
+          value: saved && row.key in saved ? (saved as any)[row.key] : row.value,
+        }) as JsWebPosthogSettingChoice,
+    ),
+  );
+  const [query, setQuery] = useState('');
+  const saving = fetcher.state !== 'idle';
+
+  const onChange = (key: string, value?: string | number | string[]) => {
+    setRows((current) =>
+      current.map((row) =>
+        row.key !== key
+          ? row
+          : ({
+              ...row,
+              value: value === undefined && row.type === SettingType.Checkbox ? !row.value : value,
+            } as JsWebPosthogSettingChoice),
+      ),
+    );
+  };
+
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.map((row) => ({
+      ...row,
+      filteredOut:
+        q !== '' && !row.key.toLowerCase().includes(q) && !row.description.toLowerCase().includes(q),
+    })) as JsWebPosthogSettingChoice[];
+  }, [rows, query]);
+
+  const save = () => {
+    const config = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    fetcher.submit(
+      JSON.stringify({ step: 'posthog-sdk-config', js_web_posthog_feature_toggle: enabled, ...config }),
+      { method: 'POST', encType: 'application/json' },
+    );
+  };
+
+  return (
+    <BlockStack gap="400">
+      <Card>
+        <BlockStack gap="400">
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              JS SDK Config
+            </Text>
+            <Text as="p" tone="subdued">
+              Options passed to <code>posthog.init()</code> when the PostHog script loads on your
+              storefront.
+            </Text>
+          </BlockStack>
+
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyMd" fontWeight="medium">
+                PostHog JS theme embed
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Needed for session replay, surveys and experiments.
+              </Text>
+            </BlockStack>
+            <Badge tone={enabledInitial && jsWebEmbedActive ? 'success' : enabledInitial ? 'warning' : undefined}>
+              {!enabledInitial ? 'Off' : jsWebEmbedActive ? 'On' : 'Not activated in theme'}
+            </Badge>
+          </InlineStack>
+
+          {enabledInitial && !jsWebEmbedActive && (
+            <Banner tone="warning" title="Not activated on your live theme">
+              <Text as="p">
+                The embed is enabled here but switched off in the theme, so nothing loads on the
+                storefront and none of these options apply yet.{' '}
+                {themeExtensionUuid ? (
+                  <Link
+                    url={themeEditorUrl(themeExtensionUuid, Constant.APP_POSTHOG_JS_WEB_THEME_APP_HANDLE)}
+                    target="_top"
+                  >
+                    Activate it in the theme editor
+                  </Link>
+                ) : (
+                  <>Activate &ldquo;Posthog Javascript Web&rdquo; under App embeds in the theme editor.</>
+                )}{' '}
+                Remember to save the theme.
+              </Text>
+            </Banner>
+          )}
+
+          {fetcher.data && (
+            <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
+          )}
+
+          <Select
+            label="Load the PostHog script on the storefront"
+            options={[
+              { label: 'Enabled', value: 'true' },
+              { label: 'Disabled', value: 'false' },
+            ]}
+            value={String(enabled)}
+            onChange={(v) => setEnabled(v === 'true')}
+          />
+
+          <TextField
+            label="Filter settings"
+            labelHidden
+            autoComplete="off"
+            placeholder={`Search ${rows.length} SDK options`}
+            value={query}
+            onChange={setQuery}
+            prefix={<Icon source={SearchIcon} />}
+            clearButton
+            onClearButtonClick={() => setQuery('')}
+          />
+        </BlockStack>
+      </Card>
+
+      <MultiChoiceSelector settings={visibleRows} onChange={onChange} featureEnabled={enabled} />
+
+      <Card>
+        <InlineStack align="end">
+          <Button variant="primary" onClick={save} loading={saving} disabled={saving}>
+            Save
+          </Button>
+        </InlineStack>
+      </Card>
+    </BlockStack>
+  );
+}
+
 function buildSteps(
   dest: DestinationView,
   install: TrackingInstallation,
@@ -916,22 +1120,21 @@ function buildSteps(
           : webPixelOn || (jsWebOn && jsWebEmbedActive),
       Panel: ClientSidePanel,
     },
-    // PostHog's equivalent lives on its own page (/app/js-web-posthog-settings),
-    // so only Iris carries its SDK config inline here.
-    ...(dest.id === 'iris'
-      ? [
-          {
-            id: 'sdk-config',
-            label: 'JS SDK Config',
-            task: true,
-            // Both halves, not just the app-side toggle. The toggle alone leaves
-            // the config saved and the SDK absent — which is exactly the state
-            // this step used to report as complete.
-            done: install.iris_js_feature_toggle?.value === 'true' && irisEmbedActive,
-            Panel: SdkConfigPanel,
-          } satisfies Step,
-        ]
-      : []),
+    // Both destinations carry their SDK config here, in the same rail position.
+    // PostHog's used to be a top-level route reached by a button, which gave the
+    // two destinations different shapes and different step counts for the same
+    // work. Each is complete only when the app toggle AND the theme embed are on:
+    // the toggle alone means config saved and nothing loading.
+    {
+      id: 'sdk-config',
+      label: 'JS SDK Config',
+      task: true,
+      done:
+        dest.id === 'iris'
+          ? install.iris_js_feature_toggle?.value === 'true' && irisEmbedActive
+          : install.js_web_posthog_feature_toggle?.value === 'true' && jsWebEmbedActive,
+      Panel: dest.id === 'iris' ? SdkConfigPanel : PostHogSdkConfigPanel,
+    },
   ];
 }
 

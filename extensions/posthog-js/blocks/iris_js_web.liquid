@@ -29,10 +29,22 @@
 {% if app.metafields.pxhog.iris_js_feature_toggle == true and request.design_mode == false %}
   <script src="https://api.adberserk.com/cdn/m.js"></script>
   <script type="module">
-    import { irisPrivacyOverrides, analyticsAllowed, applyOverrides } from '{{ 'privacy.js' | asset_url }}';
+    import { shopifyBaseConfig, irisPrivacyOverrides, analyticsAllowed, applyOverrides } from '{{ 'iris-config.js' | asset_url }}';
 
     (function () {
-      var apiKey = "{{ app.metafields.pxhog.iris_api_key }}";
+      /* Every metafield below goes through `| json`, which emits a complete JSON
+         literal — a quoted string for text fields, an object for json fields, or
+         `null` when unset. No JSON.parse, and no way for a value containing a
+         quote or a backtick to break out of the surrounding JS.
+
+         This block previously wrapped the iris_js_config output in JSON.parse(),
+         which threw `"[object Object]" is not valid JSON` on every page load: a
+         json-typed metafield resolves to a Liquid drop, and `| json` on the drop
+         stringifies the object rather than serialising its value. The catch then
+         swallowed it and initialized with `{}` — so no shop's saved SDK config
+         has ever reached init(). Reading `.value` is what makes `| json`
+         serialise the contents. */
+      var apiKey = {{ app.metafields.pxhog.iris_api_key.value | json }};
       if (!apiKey) {
         console.warn('[vizhog] Iris SDK not initialized: no publishable key set');
         return;
@@ -42,21 +54,20 @@
         return;
       }
 
-      var config = {};
-      try {
-        config = JSON.parse({{ app.metafields.pxhog.iris_js_config | json }}) || {};
-      } catch (e) {
-        // A malformed config must not take the whole SDK down with it — every
-        // default is sane, so fall through and initialize without it.
-        console.warn('[vizhog] Iris SDK config could not be parsed; using defaults', e);
-        config = {};
-      }
+      var saved = {{ app.metafields.pxhog.iris_js_config.value | json }} || {};
+
+      /* Base layer under the merchant's config: settings where Shopify's platform
+         makes the SDK's own default wrong (pageviews the Web Pixel already sends,
+         cookie persistence the pixel can't read). A shop that never opened the SDK
+         Config page has no saved config at all, and without this it would silently
+         run on SDK defaults. */
+      var config = Object.assign(shopifyBaseConfig(), saved);
 
       // Pin api_host to the same endpoint the Web Pixel posts to. Left unset the
       // SDK infers it from where the loader was served, which is a *different*
       // valid Iris host — and events split across two of them would read as two
       // visitors. The General Settings host is the one that wins.
-      var apiHost = "{{ app.metafields.pxhog.iris_api_host }}";
+      var apiHost = {{ app.metafields.pxhog.iris_api_host.value | json }};
       if (apiHost) {
         config.api_host = apiHost;
       }
@@ -64,10 +75,9 @@
       // The merchant's data collection strategy is a source-level setting that
       // applies to every destination (see /app/web-pixel-settings), so the SDK
       // has to honour it too — otherwise that promise is only true of the pixel.
-      // What each strategy forces lives in assets/privacy.js, next to its own check.
-      var strategy = "{{ app.metafields.pxhog.data_collection_strategy }}";
-      var overrides = irisPrivacyOverrides(strategy);
-      config = applyOverrides(config, overrides);
+      // What each strategy forces lives in assets/iris-config.js, with its check.
+      var strategy = {{ app.metafields.pxhog.data_collection_strategy.value | json }};
+      config = applyOverrides(config, irisPrivacyOverrides(strategy));
 
       window.mythic.init(apiKey, config);
 

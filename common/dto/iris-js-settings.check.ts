@@ -50,7 +50,12 @@ assert.ok(!('form_selector' in sdk));
 assert.ok(!('sensitive_fields' in sdk));
 // Plain options pass through.
 assert.equal(sdk.batch_size, 10);
-assert.equal(sdk.persistence, 'localStorage+cookie');
+// localStorage, NOT the SDK's own 'localStorage+cookie' default. The Web Pixel's
+// identity handoff reads only localStorage, so a cookie would be a second copy of
+// identity that nothing consults at that boundary. If this assertion ever fails,
+// the two paths can silently disagree about who the visitor is — don't just
+// update the expected value, re-read the comment on `persistence` in the schema.
+assert.equal(sdk.persistence, 'localStorage');
 
 // Selectors, once set, land inside the nested object.
 const withSelectors = toIrisSdkConfig(
