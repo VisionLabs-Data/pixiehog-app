@@ -32,12 +32,14 @@ import styles from '../styles/tracking.module.css';
 
 export const clientLoader = async ({ request }: ClientLoaderFunctionArgs) => {
   const response = await clientQueryCurrentAppInstallation();
-  const jsWebEmbedActive = await clientAppEmbedStatus(
-    window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
-  );
+  const [jsWebEmbedActive, irisEmbedActive] = await Promise.all([
+    clientAppEmbedStatus(window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID),
+    clientAppEmbedStatus(window.ENV.APP_IRIS_JS_THEME_APP_UUID),
+  ]);
   return {
     install: response.currentAppInstallation as TrackingInstallation,
     jsWebEmbedActive: Boolean(jsWebEmbedActive),
+    irisEmbedActive: Boolean(irisEmbedActive),
   };
 };
 
@@ -275,10 +277,10 @@ function DestinationCard({ dest }: { dest: DestinationView }) {
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
 export default function TrackingOverview() {
-  const { install, jsWebEmbedActive } = useLoaderData<typeof clientLoader>();
+  const { install, jsWebEmbedActive, irisEmbedActive } = useLoaderData<typeof clientLoader>();
   const [addOpen, setAddOpen] = useState(false);
 
-  const sources = deriveSources(install, jsWebEmbedActive);
+  const sources = deriveSources(install, jsWebEmbedActive, irisEmbedActive);
   const destinations = deriveDestinations(install);
   const liveCount = destinations.filter((d) => d.live).length;
   const unconfigured = destinations.filter((d) => !d.configured);

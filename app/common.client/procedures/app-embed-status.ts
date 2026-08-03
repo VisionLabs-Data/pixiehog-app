@@ -4,6 +4,14 @@ import  JSON5 from "json5"
 import { serializeError } from 'serialize-error';
 
 export async function appEmbedStatus(appEmbedUuid: string) {
+  // An unset UUID would make the `type.includes(uuid)` test below match every
+  // block, reporting an embed as active when it isn't installed at all. This
+  // happens for real: a theme extension has no UUID until its first deploy, so
+  // the env var is legitimately empty before then.
+  if (!appEmbedUuid) {
+    return false;
+  }
+
   const themes = await queryThemes({
     files: ['config/settings_data.json'],
     first: 1,

@@ -1,0 +1,134 @@
+{% comment %}
+  Loads the Mythic (Iris) JavaScript SDK on the storefront and initializes it
+  with the config saved at /app/destinations/iris?step=sdk-config.
+
+  Why this exists: the Web Pixel's Iris sink is a direct HTTP client — it posts
+  events and nothing more. Session replay, autocapture, error tracking, web
+  vitals and the SDK's own identity management all live in the SDK, which had no
+  way onto the page until now. The pixel already looks for the SDK's ids in
+  localStorage (`mythic_*`) and adopts them when present, so once this block is
+  active the two paths report as one visitor.
+
+  Two deliberate differences from extensions/posthog-js:
+
+  1. `target: head`, not body. The loader installs its uncaught-error and
+     unhandled-rejection listeners synchronously when it runs, so anything thrown
+     before it — including a tag manager's own init — is invisible to error
+     tracking. Docs: "Place the loader high in <head>, before any tag manager."
+
+  2. Consequence of (1): `window.Shopify` is NOT guaranteed to exist here.
+     Shopify's storefront scripts have not necessarily run yet, so
+     `Shopify.loadFeatures` may be undefined at this point. The consent wiring
+     below therefore waits for it instead of assuming it, and `requireConsent`
+     is applied at init so nothing escapes while we wait.
+{% endcomment %}
+{% if app.metafields.pxhog.iris_js_feature_toggle == true and request.design_mode == false %}
+  <script src="https://api.adberserk.com/cdn/m.js"></script>
+  <script type="module">
+    import { irisPrivacyOverrides, analyticsAllowed, applyOverrides } from '{{ 'privacy.js' | asset_url }}';
+
+    (function () {
+      var apiKey = "{{ app.metafields.pxhog.iris_api_key }}";
+      if (!apiKey) {
+        console.warn('[vizhog] Iris SDK not initialized: no publishable key set');
+        return;
+      }
+      if (!window.mythic || typeof window.mythic.init !== 'function') {
+        console.warn('[vizhog] Iris SDK loader did not run; nothing to initialize');
+        return;
+      }
+
+      var config = {};
+      try {
+        config = JSON.parse({{ app.metafields.pxhog.iris_js_config | json }}) || {};
+      } catch (e) {
+        // A malformed config must not take the whole SDK down with it — every
+        // default is sane, so fall through and initialize without it.
+        console.warn('[vizhog] Iris SDK config could not be parsed; using defaults', e);
+        config = {};
+      }
+
+      // Pin api_host to the same endpoint the Web Pixel posts to. Left unset the
+      // SDK infers it from where the loader was served, which is a *different*
+      // valid Iris host — and events split across two of them would read as two
+      // visitors. The General Settings host is the one that wins.
+      var apiHost = "{{ app.metafields.pxhog.iris_api_host }}";
+      if (apiHost) {
+        config.api_host = apiHost;
+      }
+
+      // The merchant's data collection strategy is a source-level setting that
+      // applies to every destination (see /app/web-pixel-settings), so the SDK
+      // has to honour it too — otherwise that promise is only true of the pixel.
+      // What each strategy forces lives in privacy.js, next to its own check.
+      var strategy = "{{ app.metafields.pxhog.data_collection_strategy }}";
+      var overrides = irisPrivacyOverrides(strategy);
+      config = applyOverrides(config, overrides);
+
+      window.mythic.init(apiKey, config);
+
+      if (!config.requireConsent) {
+        return;
+      }
+
+      // ── Consent gating ──────────────────────────────────────────────────
+      // Every event is queued and withheld until grantConsent() is called, so
+      // failing to reach the API means capturing nothing. That's the intended
+      // failure direction for "by consent".
+      //
+      // Note for anyone debugging a US shop: Shopify returns analytics=true with
+      // no banner in regions that don't regulate consent, so this grants
+      // immediately there. That is correct behaviour, not a bypass.
+      function sync(detail) {
+        var api = window.Shopify && window.Shopify.customerPrivacy;
+        if (analyticsAllowed(detail, api)) {
+          window.mythic.grantConsent();
+        } else {
+          // Also clears local storage, so a shopper who withdraws consent
+          // leaves nothing behind.
+          window.mythic.revokeConsent();
+        }
+      }
+
+      var tries = 0;
+      (function waitForConsentApi() {
+        if (window.Shopify && typeof window.Shopify.loadFeatures === 'function') {
+          window.Shopify.loadFeatures(
+            [{ name: 'consent-tracking-api', version: '0.1' }],
+            function (error) {
+              if (error) {
+                console.error('[vizhog] Shopify consent API failed to load; Iris stays paused', error);
+                return;
+              }
+              sync(null);
+              document.addEventListener('visitorConsentCollected', function (event) {
+                sync(event && event.detail);
+              });
+            }
+          );
+          return;
+        }
+        // ~10s. A theme that never defines Shopify.loadFeatures leaves Iris
+        // paused rather than capturing without knowing the consent state.
+        if (++tries > 100) {
+          console.warn('[vizhog] Shopify consent API never appeared; Iris stays paused');
+          return;
+        }
+        setTimeout(waitForConsentApi, 100);
+      })();
+    })();
+  </script>
+{% endif %}
+{% schema %}
+{
+  "name": "Iris Javascript Web",
+  "target": "head",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Toggle",
+      "info": "Loads the [Iris (Mythic) JavaScript SDK](https://docs.mythicdata.io/javascript-sdk/overview) on the online store, enabling session replay, autocapture and error tracking. Configure it in the VizHog admin under Iris → JS SDK Config. Note: the SDK does not run on Checkout / Post-purchase / Thank you / Order status pages — the Web Pixel covers those."
+    }
+  ]
+}
+{% endschema %}

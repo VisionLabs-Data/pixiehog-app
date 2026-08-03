@@ -29,6 +29,7 @@ export const links = () => [{ rel: 'stylesheet', href: polarisStyles }];
 const STUB_SCRIPT = `
 window.ENV = window.ENV || {};
 window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID = window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID || 'preview-app-embed-uuid';
+window.ENV.APP_IRIS_JS_THEME_APP_UUID = window.ENV.APP_IRIS_JS_THEME_APP_UUID || 'preview-iris-embed-uuid';
 window.shopify = window.shopify || {
   config: { shop: '${PREVIEW_SHOP}', apiKey: 'preview' },
   toast: { show: function () {} },
@@ -38,8 +39,6 @@ window.shopify = window.shopify || {
 interface NavItem {
   to: string;
   label: string;
-  /** Pages with no data behind them yet — marked so the preview is honest. */
-  planned?: boolean;
 }
 
 // Mirrors the production IA: sources own what's shared, destinations own what's
@@ -64,21 +63,6 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
       { to: '/preview/destinations/posthog', label: 'PostHog' },
       { to: '/preview/destinations/iris', label: 'Iris' },
       { to: '/preview/js-web', label: '↳ PostHog JS SDK' },
-    ],
-  },
-  {
-    group: 'Monitoring',
-    items: [
-      { to: '/preview/real-time-activity', label: 'Real-Time Activity', planned: true },
-      { to: '/preview/channel-accuracy', label: 'Channel Accuracy', planned: true },
-      { to: '/preview/attribution-feed', label: 'Attribution Feed', planned: true },
-    ],
-  },
-  {
-    group: 'Tagging',
-    items: [
-      { to: '/preview/event-builder', label: 'Event Builder', planned: true },
-      { to: '/preview/pre-built-tags', label: 'Pre-Built Tags', planned: true },
     ],
   },
 ];
@@ -153,9 +137,6 @@ export default function PreviewLayout() {
                     }}
                   >
                     <span>{item.label}</span>
-                    {item.planned && (
-                      <span style={{ color: '#8a8a8a', fontSize: 11, whiteSpace: 'nowrap' }}>soon</span>
-                    )}
                   </Link>
                 );
               })}

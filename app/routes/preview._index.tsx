@@ -7,11 +7,6 @@ const PAGES = [
   { to: '/preview/destinations/posthog', label: 'Destination · PostHog', desc: 'Credentials, event naming, client-side; consent is read-only' },
   { to: '/preview/destinations/iris', label: 'Destination · Iris', desc: 'As above, plus the generated JS SDK config form' },
   { to: '/preview/js-web', label: 'Destination · PostHog JS SDK', desc: 'Client-side posthog-js configuration' },
-  { to: '/preview/real-time-activity', label: 'Real-Time Activity', desc: 'Placeholder — needs a read path back from PostHog' },
-  { to: '/preview/channel-accuracy', label: 'Channel Accuracy', desc: 'Placeholder — needs ad platform credentials' },
-  { to: '/preview/attribution-feed', label: 'Attribution Feed', desc: 'Placeholder — needs persisted sessions' },
-  { to: '/preview/event-builder', label: 'Event Builder', desc: 'Placeholder — needs a rules store + pixel change' },
-  { to: '/preview/pre-built-tags', label: 'Pre-Built Tags', desc: 'Placeholder — needs a GTM container generator' },
 ];
 
 export default function PreviewIndex() {

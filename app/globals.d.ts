@@ -5,6 +5,7 @@ declare global {
       POSTHOG_API_KEY: string;
       POSTOHG_API_HOST: string;
       APP_POSTHOG_JS_WEB_THEME_APP_UUID: string;
+      APP_IRIS_JS_THEME_APP_UUID: string;
     };
   }
 }

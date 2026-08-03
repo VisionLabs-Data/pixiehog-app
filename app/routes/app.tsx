@@ -61,11 +61,6 @@ export default function App() {
         <Link to="/app/destinations/posthog">PostHog (destination)</Link>
         <Link to="/app/destinations/iris">Iris (destination)</Link>
         <Link to="/app/custom-events">Custom Events</Link>
-        <Link to="/app/real-time-activity">Real-Time Activity</Link>
-        <Link to="/app/channel-accuracy">Channel Accuracy</Link>
-        <Link to="/app/attribution-feed">Attribution Feed</Link>
-        <Link to="/app/event-builder">Event Builder</Link>
-        <Link to="/app/pre-built-tags">Pre-Built Tags</Link>
       </NavMenu>
       <Outlet />
       <PosthogInit/>

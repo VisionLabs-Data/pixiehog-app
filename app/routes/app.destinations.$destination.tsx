@@ -91,12 +91,18 @@ export const clientLoader = async ({ params }: ClientLoaderFunctionArgs) => {
     throw new Response('Unknown destination', { status: 404 });
   }
   const response = await clientQueryCurrentAppInstallation();
-  const jsWebEmbedActive = await clientAppEmbedStatus(
-    window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID,
-  );
+  // Both embeds are checked here rather than per-panel so switching steps
+  // doesn't refetch the theme file each time.
+  const [jsWebEmbedActive, irisEmbedActive] = await Promise.all([
+    clientAppEmbedStatus(window.ENV.APP_POSTHOG_JS_WEB_THEME_APP_UUID),
+    clientAppEmbedStatus(window.ENV.APP_IRIS_JS_THEME_APP_UUID),
+  ]);
   return {
     install: response.currentAppInstallation as TrackingInstallation,
     jsWebEmbedActive: Boolean(jsWebEmbedActive),
+    irisEmbedActive: Boolean(irisEmbedActive),
+    irisEmbedUuid: window.ENV.APP_IRIS_JS_THEME_APP_UUID,
+    shop: window.shopify.config.shop,
   };
 };
 
@@ -221,7 +227,13 @@ export function HydrateFallback() {
 interface PanelProps {
   dest: DestinationView;
   install: TrackingInstallation;
+  /** PostHog's theme app embed is active on the live theme. */
   jsWebEmbedActive: boolean;
+  /** Iris's theme app embed is active on the live theme. */
+  irisEmbedActive: boolean;
+  /** Deeplink target for the theme editor. */
+  themeEditorUrl: (uuid: string, handle: string) => string;
+  irisEmbedUuid: string;
 }
 
 function OverviewPanel({ dest, install }: PanelProps) {
@@ -608,9 +620,10 @@ function ConsentPanel({ install }: PanelProps) {
   );
 }
 
-function ClientSidePanel({ dest, install, jsWebEmbedActive }: PanelProps) {
+function ClientSidePanel({ dest, install, jsWebEmbedActive, irisEmbedActive }: PanelProps) {
   const webPixelOn = install.web_pixel_feature_toggle?.value === 'true';
   const jsWebOn = install.js_web_posthog_feature_toggle?.value === 'true';
+  const irisJsOn = install.iris_js_feature_toggle?.value === 'true';
 
   return (
     <Card>
@@ -669,11 +682,29 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive }: PanelProps) {
 
         {dest.id === 'iris' && (
           <>
+            <Divider />
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyMd" fontWeight="medium">
+                  Iris SDK theme embed
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Needed for session replay, autocapture and error tracking.
+                </Text>
+              </BlockStack>
+              <Badge tone={irisJsOn && irisEmbedActive ? 'success' : irisJsOn ? 'warning' : undefined}>
+                {!irisJsOn ? 'Off' : irisEmbedActive ? 'On' : 'Not activated in theme'}
+              </Badge>
+            </InlineStack>
             <Banner tone="info">
-              Iris is a second sink on the same Web Pixel — there is no separate script to install.
-              Turning the Web Pixel off stops the Iris web path too.
+              Iris has two independent web paths. The Web Pixel above sends events on its own, so
+              Iris keeps working with the SDK embed off — the embed only adds what the SDK can do
+              that a plain HTTP client can&rsquo;t.
             </Banner>
-            <InlineStack>
+            <InlineStack gap="200">
+              <Button variant="primary" url="/app/destinations/iris?step=sdk-config">
+                Configure Iris SDK
+              </Button>
               <Button url="/app/web-pixel-settings">Shopify Web source</Button>
             </InlineStack>
           </>
@@ -689,10 +720,11 @@ function ClientSidePanel({ dest, install, jsWebEmbedActive }: PanelProps) {
  * Rows are generated from IrisJsConfigSchema, so this form covers the SDK's
  * documented option surface without hand-writing a control per option.
  */
-function SdkConfigPanel({ install }: PanelProps) {
+function SdkConfigPanel({ install, irisEmbedActive, themeEditorUrl, irisEmbedUuid }: PanelProps) {
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
   const saved = install.iris_js_config?.jsonValue as Partial<IrisJsConfig> | null | undefined;
   const enabledInitial = install.iris_js_feature_toggle?.value === 'true';
+  const strategy = install.data_collection_strategy?.value || 'anonymized';
 
   const [enabled, setEnabled] = useState(enabledInitial);
   const [rows, setRows] = useState(() => irisJsSettingsWithValues(saved));
@@ -743,14 +775,48 @@ function SdkConfigPanel({ install }: PanelProps) {
             </Text>
           </BlockStack>
 
-          <Banner tone="warning" title="No storefront loader ships this yet">
-            <Text as="p">
-              The Web Pixel&rsquo;s Iris sink is a direct HTTP client, not the Mythic SDK, so it
-              can&rsquo;t honour these options. They take effect once an Iris theme app embed loads{' '}
-              <code>{Constant.IRIS_SDK_LOADER_URL}</code> — the same shape as the existing PostHog
-              JS embed. Saving now stores the config so it&rsquo;s ready for that extension.
-            </Text>
-          </Banner>
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyMd" fontWeight="medium">
+                Iris SDK theme embed
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Loads <code>{Constant.IRIS_SDK_LOADER_URL}</code> in the storefront&rsquo;s head.
+              </Text>
+            </BlockStack>
+            <Badge tone={enabledInitial && irisEmbedActive ? 'success' : enabledInitial ? 'warning' : undefined}>
+              {!enabledInitial ? 'Off' : irisEmbedActive ? 'On' : 'Not activated in theme'}
+            </Badge>
+          </InlineStack>
+
+          {/* Two independent switches, and only both together do anything: this
+              app's toggle gates the liquid block, and the merchant has to
+              activate the embed on the live theme. Reporting only one of them
+              is how you get a page that claims to be working and isn't. */}
+          {enabledInitial && !irisEmbedActive && (
+            <Banner tone="warning" title="Not activated on your live theme">
+              <Text as="p">
+                The embed is enabled here but switched off in the theme, so nothing loads on the
+                storefront and none of these options apply yet.{' '}
+                {irisEmbedUuid ? (
+                  <Link url={themeEditorUrl(irisEmbedUuid, Constant.APP_IRIS_JS_THEME_APP_HANDLE)} target="_top">
+                    Activate it in the theme editor
+                  </Link>
+                ) : (
+                  <>Activate &ldquo;Iris Javascript Web&rdquo; under App embeds in the theme editor.</>
+                )}{' '}
+                Remember to save the theme.
+              </Text>
+            </Banner>
+          )}
+
+          {strategy === 'non-anonymized-by-consent' && (
+            <Banner tone="info">
+              Your data collection strategy is <strong>Identified by consent</strong>, so the embed
+              forces <code>requireConsent</code> on and holds every event until the shopper grants
+              analytics consent — whatever that option is set to below.
+            </Banner>
+          )}
 
           {fetcher.data && (
             <Banner tone={fetcher.data.ok ? 'success' : 'critical'}>{fetcher.data.message}</Banner>
@@ -810,9 +876,15 @@ interface Step {
   Panel: (props: PanelProps) => JSX.Element;
 }
 
-function buildSteps(dest: DestinationView, install: TrackingInstallation, jsWebEmbedActive: boolean): Step[] {
+function buildSteps(
+  dest: DestinationView,
+  install: TrackingInstallation,
+  jsWebEmbedActive: boolean,
+  irisEmbedActive: boolean,
+): Step[] {
   const webPixelOn = install.web_pixel_feature_toggle?.value === 'true';
   const jsWebOn = install.js_web_posthog_feature_toggle?.value === 'true';
+  const irisJsOn = install.iris_js_feature_toggle?.value === 'true';
   const trackedCount = Object.values(
     (install.web_pixel_settings?.jsonValue as Record<string, boolean> | null) ?? {},
   ).filter(Boolean).length;
@@ -835,7 +907,10 @@ function buildSteps(dest: DestinationView, install: TrackingInstallation, jsWebE
       id: 'client-side',
       label: 'Client-Side Tracking',
       task: true,
-      done: dest.id === 'iris' ? webPixelOn : webPixelOn || (jsWebOn && jsWebEmbedActive),
+      done:
+        dest.id === 'iris'
+          ? webPixelOn || (irisJsOn && irisEmbedActive)
+          : webPixelOn || (jsWebOn && jsWebEmbedActive),
       Panel: ClientSidePanel,
     },
     // PostHog's equivalent lives on its own page (/app/js-web-posthog-settings),
@@ -846,7 +921,10 @@ function buildSteps(dest: DestinationView, install: TrackingInstallation, jsWebE
             id: 'sdk-config',
             label: 'JS SDK Config',
             task: true,
-            done: install.iris_js_feature_toggle?.value === 'true',
+            // Both halves, not just the app-side toggle. The toggle alone leaves
+            // the config saved and the SDK absent — which is exactly the state
+            // this step used to report as complete.
+            done: install.iris_js_feature_toggle?.value === 'true' && irisEmbedActive,
             Panel: SdkConfigPanel,
           } satisfies Step,
         ]
@@ -857,14 +935,17 @@ function buildSteps(dest: DestinationView, install: TrackingInstallation, jsWebE
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
 export default function DestinationSettings() {
-  const { install, jsWebEmbedActive } = useLoaderData<typeof clientLoader>();
+  const { install, jsWebEmbedActive, irisEmbedActive, irisEmbedUuid, shop } =
+    useLoaderData<typeof clientLoader>();
+  const themeEditorUrl = (uuid: string, handle: string) =>
+    `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${uuid}/${handle}`;
   const params = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const id = params.destination as DestinationId;
   const dest = deriveDestinations(install).find((d) => d.id === id)!;
-  const steps = buildSteps(dest, install, jsWebEmbedActive);
+  const steps = buildSteps(dest, install, jsWebEmbedActive, irisEmbedActive);
 
   const activeId = searchParams.get('step') || 'overview';
   const active = steps.find((s) => s.id === activeId) ?? steps[0];
@@ -962,7 +1043,14 @@ export default function DestinationSettings() {
         </Box>
 
         <Box width="100%" minWidth="0">
-          <active.Panel dest={dest} install={install} jsWebEmbedActive={jsWebEmbedActive} />
+          <active.Panel
+            dest={dest}
+            install={install}
+            jsWebEmbedActive={jsWebEmbedActive}
+            irisEmbedActive={irisEmbedActive}
+            themeEditorUrl={themeEditorUrl}
+            irisEmbedUuid={irisEmbedUuid}
+          />
         </Box>
       </InlineStack>
     </Page>

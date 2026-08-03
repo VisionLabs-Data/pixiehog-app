@@ -7,7 +7,8 @@ import { json } from '@remix-run/node';
 import { mockAppInstallation } from '../preview-support/mock-app-installation';
 import { useClientComponent, PreviewLoading } from '../preview-support/client-only-route';
 
-export const loader = () => json({ install: mockAppInstallation, jsWebEmbedActive: true });
+export const loader = () =>
+  json({ install: mockAppInstallation, jsWebEmbedActive: true, irisEmbedActive: false });
 
 export default function PreviewTracking() {
   const Comp = useClientComponent(() => import('./app.tracking'));

@@ -118,10 +118,12 @@ export const mockAppInstallation = {
     jsonValue: {} as Record<string, unknown>,
     type: 'json',
   },
+  // On, so the preview exercises the "enabled here but not activated on the
+  // theme" state — the one that's easy to ship broken.
   iris_js_feature_toggle: {
     key: 'iris_js_feature_toggle',
-    value: 'false',
-    jsonValue: false,
+    value: 'true',
+    jsonValue: true,
     type: 'boolean',
   },
 };

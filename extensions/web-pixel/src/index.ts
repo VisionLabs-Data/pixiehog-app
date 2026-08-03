@@ -13,6 +13,7 @@ import { PixieHogIris } from './pixiehog-iris';
 import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerce-spec/transformer-map';
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
+import { resolveAnonymous } from './privacy';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -303,19 +304,14 @@ register(async (extensionApi) => {
     }
   }
 
-  const anonymous: boolean = (() =>{
-
-    if(settings.data_collection_strategy == 'anonymized') {
-      return true
-    }
-    if(settings.data_collection_strategy == 'non-anonymized') {
-      return false
-    }
-    if(settings.data_collection_strategy == 'non-anonymized-by-consent') {
-      return  !customerPrivacyStatus.analyticsProcessingAllowed
-    }
-    return true
-  })()
+  // Resolved per event, NOT once at register time — `customerPrivacyStatus` is
+  // reassigned by the visitorConsentCollected subscription below, and a frozen
+  // boolean ignored it. See extensions/web-pixel/src/privacy.ts.
+  const resolveAnonymousNow = () =>
+    resolveAnonymous(
+      settings.data_collection_strategy,
+      customerPrivacyStatus.analyticsProcessingAllowed,
+    );
 
   type ValueOf<T> = T[keyof T];
   function preprocessEvent<T extends ValueOf<StandardEvents>>(fn: (t: T, u: string | undefined, p: boolean) => void) {
@@ -326,7 +322,8 @@ register(async (extensionApi) => {
       }
       const uuid: string | undefined = event.id;
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
-    
+
+      const anonymous = resolveAnonymousNow();
       const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
 
       const localStorageAnonymous = await localStorage.getItem(PXHOG_ANONYMOUS_KEY) as 'true' | 'false' | null;
@@ -434,7 +431,7 @@ register(async (extensionApi) => {
     await localStorage.setItem(POSTHOG_KEY, JSON.stringify({...webPostHogPersisted, distinct_id: str }));
   }
 
-  if (init.data.customer?.email && anonymous == false && globalDistinctId != init.data.customer.email) {
+  if (init.data.customer?.email && resolveAnonymousNow() == false && globalDistinctId != init.data.customer.email) {
     await setDistinctId(init.data.customer?.email)
     await identifyAll(init.data.customer.email, globalDistinctId)
   }

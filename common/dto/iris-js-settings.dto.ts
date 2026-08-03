@@ -128,6 +128,11 @@ export const IrisJsConfigSchema = z.object({
     .describe('Intercept fetch/XHR traffic to derive events from API calls.')
     .default(false),
 
+  network_endpoints: z
+    .array(z.string().trim())
+    .describe('URL patterns auto_network_intercept watches. Empty means the SDK decides.')
+    .default([]),
+
   wait_for_page_data: z
     .boolean()
     .describe('Buffer early events until framework page data is available, so they carry full context.')
@@ -153,6 +158,18 @@ export const IrisJsConfigSchema = z.object({
     .enum(['localStorage+cookie', 'localStorage', 'sessionStorage', 'cookie', 'memory'])
     .describe('Where the SDK stores the visitor and session identifiers.')
     .default('localStorage+cookie'),
+
+  persistence_name: z
+    .string()
+    .trim()
+    .describe('Prefix for stored keys. Empty uses the SDK default of {globalName}_{key}_.')
+    .default(''),
+
+  cookie_name: z
+    .string()
+    .trim()
+    .describe('Override the identity cookie name. Empty uses the SDK default.')
+    .default(''),
 
   cookie_expiration: z.number().int().min(1).max(400).describe('Cookie lifetime in days.').default(365),
 

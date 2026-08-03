@@ -7,6 +7,7 @@
  *   Shopify Web ───┐    │           server: Pub/Sub → CF worker → /capture
  *                  ├─◆─┤
  *   Shopify Webhooks┘   └─ Iris ──── web: Web Pixel dual-sink (pixiehog-iris.ts)
+ *                                         + Iris SDK theme embed (extensions/iris-js)
  *                                    server: /webhooks/orders → Iris /ingest
  *
  * Both the My Tracking diagram and the per-destination settings pages derive
@@ -80,21 +81,29 @@ export interface DestinationView {
 export function deriveSources(
   install: TrackingInstallation,
   jsWebEmbedActive: boolean,
+  irisEmbedActive = false,
 ): SourceView[] {
   const webPixelOn = isOn(install.web_pixel_feature_toggle);
   const jsWebOn = isOn(install.js_web_posthog_feature_toggle);
+  const irisJsOn = isOn(install.iris_js_feature_toggle);
 
+  // Each theme embed is named, because "JS theme embed" was ambiguous once
+  // there were two of them and only one might need activating.
   const webParts: string[] = [];
   if (webPixelOn) webParts.push('Web Pixel');
-  if (jsWebOn) webParts.push(jsWebEmbedActive ? 'JS theme embed' : 'JS theme embed (not activated)');
+  if (jsWebOn) webParts.push(jsWebEmbedActive ? 'PostHog JS embed' : 'PostHog JS embed (not activated)');
+  if (irisJsOn) webParts.push(irisEmbedActive ? 'Iris SDK embed' : 'Iris SDK embed (not activated)');
+
+  const anyOn = webPixelOn || jsWebOn || irisJsOn;
+  const needsActivation = (jsWebOn && !jsWebEmbedActive) || (irisJsOn && !irisEmbedActive);
 
   return [
     {
       id: 'shopify-web',
       name: 'Shopify Web',
-      detail: webParts.length ? webParts.join(' · ') : 'Web Pixel and JS embed both off',
-      badge: webPixelOn || jsWebOn
-        ? { label: jsWebOn && !jsWebEmbedActive ? 'Needs theme activation' : 'On', tone: jsWebOn && !jsWebEmbedActive ? undefined : 'success' }
+      detail: webParts.length ? webParts.join(' · ') : 'Web Pixel and theme embeds all off',
+      badge: anyOn
+        ? { label: needsActivation ? 'Needs theme activation' : 'On', tone: needsActivation ? undefined : 'success' }
         : { label: 'Off', tone: undefined },
       href: '/app/web-pixel-settings',
     },
@@ -120,6 +129,9 @@ export function deriveDestinations(install: TrackingInstallation): DestinationVi
   const irisKey = str(install.iris_api_key);
   const irisConfigured = irisKey !== '';
   const irisOn = isOn(install.iris_enabled);
+  // Two independent web legs now: the pixel's dual-sink and the SDK theme embed.
+  // The embed doesn't need iris_enabled — that flag only gates the pixel sink.
+  const irisJsOn = isOn(install.iris_js_feature_toggle);
 
   const posthog: DestinationView = {
     id: 'posthog',
@@ -145,12 +157,15 @@ export function deriveDestinations(install: TrackingInstallation): DestinationVi
     idLabel: 'Publishable Key',
     idValue: irisKey,
     host: str(install.iris_api_host) || Constant.IRIS_DEFAULT_API_HOST,
-    paths: [...(irisOn && webPixelOn ? (['Web'] as const) : []), ...(irisOn ? (['Server'] as const) : [])],
+    paths: [
+      ...((irisOn && webPixelOn) || irisJsOn ? (['Web'] as const) : []),
+      ...(irisOn ? (['Server'] as const) : []),
+    ],
     configured: irisConfigured,
-    live: irisConfigured && irisOn,
+    live: irisConfigured && (irisOn || irisJsOn),
     blockedReason: !irisConfigured
       ? 'No publishable key set'
-      : !irisOn
+      : !irisOn && !irisJsOn
         ? 'Iris is switched off'
         : null,
   };

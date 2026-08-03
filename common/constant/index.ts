@@ -25,5 +25,7 @@ export class Constant {
    *  SDK loader self-detects. Not a discrepancy; don't "reconcile" them. */
   static readonly IRIS_SDK_DEFAULT_API_HOST = 'https://api.adberserk.com'
   static readonly IRIS_SDK_LOADER_URL = 'https://api.adberserk.com/cdn/m.js'
+  /** Theme app embed block that loads the Iris SDK (extensions/iris-js). */
+  static readonly APP_IRIS_JS_THEME_APP_HANDLE = 'iris_js_web'
   static readonly SHOPIFY_API_VERSION = '2024-10'
 }
