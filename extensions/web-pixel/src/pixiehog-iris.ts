@@ -10,6 +10,8 @@
  * Per-session event volume is small; add a batch queue only if that changes.
  */
 
+import { v7 as uuidv7 } from 'uuid';
+
 export interface IrisClientOptions {
   host: string;
   apiKey: string; // pk_xxxx
@@ -76,7 +78,15 @@ export class PixieHogIris {
     try {
       await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // text/plain, NOT application/json. Iris is a different origin from the
+        // storefront, and application/json is not a CORS-safelisted request
+        // header value — so every single event paid for an OPTIONS preflight
+        // before its POST (MEASURED on the checkout thank-you page: a 204
+        // preflight in front of every 200, doubling the request count). Iris's
+        // /e handler reads the raw body and JSON.parses it regardless of
+        // Content-Type, so the safelisted value costs nothing and removes the
+        // preflight entirely. This is also what the Iris JS SDK sends.
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify(body),
         keepalive: true,
       });
@@ -95,10 +105,19 @@ export class PixieHogIris {
     setProps: Record<string, any>,
     sessionId?: string
   ): Promise<void> {
-    await this.capture(distinctId, '$identify', {
-      ...(anonDistinctId ? { $anon_distinct_id: anonDistinctId } : {}),
-      ...(sessionId ? { $session_id: sessionId } : {}),
-      $set: setProps,
-    });
+    // Mint a uuid. Iris does not generate one on /e, so an identify without it
+    // lands with uuid '' — and everything keyed on event_uuid (destination
+    // delivery logs, the portal's deliveries lookup) then collapses every
+    // identify this pixel ever sent into one bucket.
+    await this.capture(
+      distinctId,
+      '$identify',
+      {
+        ...(anonDistinctId ? { $anon_distinct_id: anonDistinctId } : {}),
+        ...(sessionId ? { $session_id: sessionId } : {}),
+        $set: setProps,
+      },
+      { uuid: uuidv7() }
+    );
   }
 }
