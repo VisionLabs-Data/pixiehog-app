@@ -30,6 +30,14 @@ export type IrisIdentityIo = {
   mintId: () => string;
   /** The pixel's own id, reused so one visitor doesn't get two ids per sink. */
   pixelDistinctId: string;
+  /**
+   * The SDK's stored `device_id`, if any. Read-only input: unlike `distinct_id`,
+   * `device_id` is NOT derived state — the SDK reads it back via its own
+   * getOrCreateDeviceId and (unless persistence is localStorage-only) mirrors it to
+   * a cookie, so it can outlive the `identity` record. Minting one here would
+   * therefore invent a second device for a browser that already has one.
+   */
+  storedDeviceId?: string | null;
 };
 
 export type ResolvedIrisIdentity = {
@@ -67,9 +75,19 @@ export async function resolveIrisIdentity(io: IrisIdentityIo): Promise<ResolvedI
   // to alias the anonymous history onto the person; seeding the email here would
   // skip that and strand the browsing history.
   const anonymousId = io.pixelDistinctId.includes('@') ? io.mintId() : io.pixelDistinctId;
-  const deviceId = io.mintId();
+  // Carry a device id through if the SDK already has one, but NEVER mint one — see
+  // storedDeviceId. A browser can legitimately have a device_id and no identity
+  // (localStorage cleared, cookie kept), and inventing one there would fork the
+  // device. Omitting the field leaves the SDK's own getOrCreateDeviceId to recover
+  // or create it, which is the only code that knows where else it lives.
+  const deviceId = present(io.storedDeviceId);
   try {
-    await io.write({ distinctId: anonymousId, anonymousId, deviceId, aliases: [] });
+    await io.write({
+      distinctId: anonymousId,
+      anonymousId,
+      ...(deviceId ? { deviceId } : {}),
+      aliases: [],
+    });
   } catch (_e) {
     // Storage blocked (private browsing). Still return the minted id so at least
     // this page's events agree with each other.

@@ -306,13 +306,17 @@ register(async (extensionApi) => {
   // would reintroduce the split this replaces.
   let irisIdentityOnce: Promise<ResolvedIrisIdentity> | null = null;
   const irisIdentity = () =>
-    (irisIdentityOnce ??= resolveIrisIdentity({
-      read: () => readIrisSdkValue<IrisIdentity>('identity'),
-      write: (record) =>
-        localStorage.setItem(IRIS_SDK_PREFIX + 'identity', JSON.stringify(record)),
-      mintId: uuidv7,
-      pixelDistinctId: globalDistinctId,
-    }));
+    (irisIdentityOnce ??= (async () =>
+      resolveIrisIdentity({
+        read: () => readIrisSdkValue<IrisIdentity>('identity'),
+        write: (record) =>
+          localStorage.setItem(IRIS_SDK_PREFIX + 'identity', JSON.stringify(record)),
+        mintId: uuidv7,
+        pixelDistinctId: globalDistinctId,
+        // The one mirror worth reading: device_id is real state the SDK reads back,
+        // not derived like distinct_id, so it can be present when identity isn't.
+        storedDeviceId: await readIrisSdkValue<string>('device_id'),
+      }))());
 
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
     const [session, identity] = await Promise.all([

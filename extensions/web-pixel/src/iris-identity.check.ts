@@ -54,8 +54,26 @@ async function main() {
     // the SDK would mint its own, which is the bug this replaces.
     assert.strictEqual(h.writes[0].distinctId, 'pixel-id', 'the key the SDK actually reads');
     assert.strictEqual(h.writes[0].anonymousId, 'pixel-id');
-    assert.ok(h.writes[0].deviceId, 'a device id must be present');
     assert.deepStrictEqual(h.writes[0].aliases, [], 'match the shape the SDK writes');
+    // Must NOT invent a device id. device_id is real state the SDK reads back and
+    // can mirror to a cookie, so it outlives `identity`: a browser whose
+    // localStorage was cleared but whose cookie survived still has one. Minting
+    // here would fork that browser into two devices.
+    assert.ok(
+      !('deviceId' in h.writes[0]),
+      'must omit deviceId entirely so the SDK can recover its own',
+    );
+    assert.strictEqual(got.deviceId, null, 'no device id is honest when none is stored');
+  }
+
+  /* ── An existing device_id is carried through, never replaced ────────────── */
+  {
+    const h = io(null);
+    const got = await resolveIrisIdentity({ ...h.io, storedDeviceId: 'sdk-device-7' });
+    assert.strictEqual(got.seeded, true);
+    assert.strictEqual(got.deviceId, 'sdk-device-7', 'reuse the device the SDK already has');
+    assert.strictEqual(h.writes[0].deviceId, 'sdk-device-7');
+    assert.strictEqual(h.writes[0].distinctId, 'pixel-id', 'still a fresh person id');
   }
 
   /* ── An empty or malformed stored record counts as absent, not as an id ───── */
