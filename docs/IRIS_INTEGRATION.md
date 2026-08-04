@@ -87,14 +87,19 @@ known profile — the same primitive PostHog uses.
 `properties` — so `pixiehog-iris.ts` lifts them out of the properties bag on the
 way out. And because the pixel's own session id lives in PostHog's namespace
 (a different value from the one the Iris JS SDK mints on the storefront), the
-pixel now reads the SDK's `mythic_session` / `mythic_device_id` /
-`mythic_distinct_id` from localStorage and re-points the Iris sink at them.
-Without that, one visit split into two sessions and two people — storefront
-browsing under the SDK's ids, cart and checkout under the pixel's — and the
-purchase session carried no landing page or UTMs, because the pixel only ever
-sees the checkout URL. PostHog's payload is unchanged. Falls back to the pixel's
-own ids if the merchant runs the SDK under a custom global name (storage prefix
-is then not `mythic_`).
+pixel shares the SDK's storage: it reads `identity` and `session` under the
+`mythic_pk_<key>_` prefix and re-points the Iris sink at them. `identity` is the
+authoritative record per the upstream *Identity Storage Contract* (Iris docs →
+JavaScript SDK); the `distinct_id` / `device_id` keys are derived mirrors and
+are never read. The pixel is READ-ONLY on the SDK's namespace: when nothing is
+stored (no theme embed on the shop) it just uses its own id — see
+`extensions/web-pixel/src/iris-identity.ts`. Without the shared key, one visit
+split into two sessions and two people — storefront browsing under the SDK's
+ids, cart and checkout under the pixel's — and the purchase session carried no
+landing page or UTMs, because the pixel only ever sees the checkout URL.
+PostHog's payload is unchanged. Falls back to the pixel's own ids if the
+merchant runs the SDK under a custom global name (storage prefix is then not
+`mythic_`).
 
 ## Where it lives
 

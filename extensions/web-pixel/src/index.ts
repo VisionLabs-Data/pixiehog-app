@@ -14,8 +14,8 @@ import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerc
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
-import type { IrisIdentity, ResolvedIrisIdentity } from './iris-identity';
-import { chooseIrisDistinctId, resolveIrisIdentity } from './iris-identity';
+import type { IrisIdentity } from './iris-identity';
+import { chooseIrisIdentity } from './iris-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -250,10 +250,10 @@ register(async (extensionApi) => {
    * outside: events flowed, they were just attributed twice.
    *
    * ponytail: assumes the default `mythic` global name. A merchant who sets a
-   * custom `__mythic_global_name` gets a different prefix, so the pixel seeds a
-   * key the SDK never reads and the two mint separate ids — correct data on both
-   * sides, just not stitched. Read `__mythic_global_name` off the settings if that
-   * ever ships as a merchant-facing option.
+   * custom `__mythic_global_name` gets a different prefix, so the pixel reads a
+   * key the SDK never writes and falls back to its own ids — correct data on
+   * both sides, just not stitched. Read `__mythic_global_name` off the settings
+   * if that ever ships as a merchant-facing option.
    */
   const IRIS_SDK_PREFIX = `mythic_${irisApiKey}_`;
 
@@ -269,65 +269,29 @@ register(async (extensionApi) => {
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
   /**
-   * One shared id: READ `identity`, and only seed it when nothing is stored.
+   * One shared id: READ `identity` and adopt it. The pixel never writes the
+   * SDK's records — see extensions/web-pixel/src/iris-identity.ts for the
+   * contract citation and why the seed that used to live here was deleted.
    *
-   * The contract is documented upstream: Mythic/Iris docs -> JavaScript SDK ->
-   * Identity Storage Contract. `identity` is authoritative and is adopted verbatim at
-   * init when present; `distinct_id` is derived; `device_id` is real state.
+   * Read fresh per event, not once at init: the theme embed can finish loading
+   * after the pixel's first events, and a fresh read lets later events adopt
+   * its id instead of staying split for the rest of the session.
    *
-   * Since SDK 2.230.5 the SDK writes `identity` write-through at init, measured at
-   * 92-95ms via setItem, and it is NOT in the ~1193ms debounced batch — so it is not
-   * clobbered afterwards. The pixel's read therefore normally finds the SDK's id and
-   * adopts it, and the seed below does nothing. The seed exists for shops with no
-   * Iris theme embed, where nothing else will ever write the record.
-   *
-   * MEASUREMENT TRAPS — every one of these produced a confident wrong conclusion in
-   * this file's history. If you re-measure, avoid all four:
-   *  1. Clearing localStorage BEFORE navigating: the outgoing page's SDK re-persists
-   *     in the gap, so you measure a warm load and think the SDK wrote early.
-   *  2. Clearing in a Playwright `addInitScript`: it runs in EVERY frame, and Shopify
-   *     spawns same-origin about:blank iframes for the pixel sandbox (measured at
-   *     98/130/131ms) — so the clear deletes the SDK's write mid-load and the pixel
-   *     legitimately finds nothing. Use a pristine context with an injected cookie.
-   *  3. Seed-then-navigate: tests adoption-at-init, not the cold single-load race, so
-   *     it passes while the cold path is broken.
-   *  4. Truncating trace output (`| tail -n`): the SDK's write is the FIRST entry and
-   *     ~85 posthog-js writes sit between it and the pixel's, so tail hides it.
-   * Attribute a write by PROVENANCE, not timing: hook `Storage.prototype.setItem` and
-   * read the stack, or compare values (the seed reuses the pixel's `ph_*` id).
-   *
-   * Session is deliberately NOT seeded. The SDK owns session semantics along with
-   * landing page and UTM attribution, and a hand-built session record risks
-   * clobbering exactly the attribution this exists to protect. The cost is that a
-   * cold first event carries no `$session_id`; the person is still right, which is
-   * what actually splits a profile.
+   * Session is deliberately not written either. The SDK owns session semantics
+   * along with landing page and UTM attribution. The cost is that an event
+   * before the SDK's first write carries no `$session_id`; the person is still
+   * right, which is what actually splits a profile.
    */
-  // Memoised: several handlers fire concurrently and some don't await, so two
-  // racing callers must not each see "absent" and seed a different id — that
-  // would reintroduce the split this replaces.
-  let irisIdentityOnce: Promise<ResolvedIrisIdentity> | null = null;
-  const irisIdentity = () =>
-    (irisIdentityOnce ??= (async () =>
-      resolveIrisIdentity({
-        read: () => readIrisSdkValue<IrisIdentity>('identity'),
-        write: (record) =>
-          localStorage.setItem(IRIS_SDK_PREFIX + 'identity', JSON.stringify(record)),
-        mintId: uuidv7,
-        pixelDistinctId: globalDistinctId,
-        // The one mirror worth reading: device_id is real state the SDK reads back,
-        // not derived like distinct_id, so it can be present when identity isn't.
-        storedDeviceId: await readIrisSdkValue<string>('device_id'),
-      }))());
-
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
-    const [session, identity] = await Promise.all([
+    const [session, stored] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
-      irisIdentity(),
+      readIrisSdkValue<IrisIdentity>('identity'),
     ]);
     const sdkSessionId = str(session && typeof session === 'object' ? session.id : null);
+    const identity = chooseIrisIdentity(distinctId, stored);
 
     return {
-      distinctId: chooseIrisDistinctId(distinctId, identity.distinctId),
+      distinctId: identity.distinctId,
       properties: {
         ...properties,
         ...(sdkSessionId ? { $session_id: sdkSessionId } : {}),

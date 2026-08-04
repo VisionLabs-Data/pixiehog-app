@@ -1,20 +1,19 @@
 /**
- * The pixel and the Iris JS SDK agree on one id by sharing a storage key.
+ * The pixel and the Iris JS SDK agree on one id by sharing a storage key —
+ * READ-ONLY on our side.
  *
- * Extracted from index.ts so it can be checked without a storefront: the failure
- * mode is silent (events keep flowing, just attributed to two people) and it only
- * shows up on a cold first visit, which is the hardest case to notice by hand.
+ * The contract is documented upstream: Mythic/Iris docs -> JavaScript SDK ->
+ * Identity Storage Contract. `identity` is the authoritative record, written by
+ * the SDK write-through at init (measured at 39ms on a clean cold load, SDK
+ * 2.231.0) and adopted verbatim when present; `distinct_id` / `device_id` are
+ * derived mirrors and must never be read as truth.
  *
- * The contract is documented upstream — read it before changing anything here:
- * Mythic/Iris docs -> JavaScript SDK -> Identity Storage Contract. In short:
- * `identity` is the authoritative record and is adopted verbatim at init when
- * present; `distinct_id` is derived state and must never be read; `device_id` is
- * real state the SDK reads back, so it must never be minted here.
- *
- * Adopting is the path that matters. Since SDK 2.230.5 the SDK writes `identity`
- * write-through at init (~95ms), so the pixel's read normally finds it and this
- * seeds nothing. Seeding remains for the case where no Iris theme embed will ever
- * run on the shop, and is harmless where one does.
+ * The pixel never writes the SDK's records. A seed used to live here for the
+ * cold-load race; a clean-harness cold test proved the SDK's write always lands
+ * before the pixel's first read, so the seed was dead code justified by
+ * measurement artifacts — see docs/iris-identity-bootstrap-request.md for the
+ * trap list. On a shop with no Iris theme embed nothing is stored and the pixel
+ * simply uses its own id, which is still one consistent person.
  */
 export type IrisIdentity = {
   distinctId?: string;
@@ -23,91 +22,23 @@ export type IrisIdentity = {
   aliases?: string[];
 };
 
-export type IrisIdentityIo = {
-  /** Read the stored `identity` record, or null when absent/unparseable. */
-  read: () => Promise<IrisIdentity | null>;
-  /** Persist a freshly minted record. May reject — storage can be blocked. */
-  write: (record: IrisIdentity) => Promise<void>;
-  mintId: () => string;
-  /** The pixel's own id, reused so one visitor doesn't get two ids per sink. */
-  pixelDistinctId: string;
-  /**
-   * The SDK's stored `device_id`, if any. Read-only input: unlike `distinct_id`,
-   * `device_id` is NOT derived state — the SDK reads it back via its own
-   * getOrCreateDeviceId and (unless persistence is localStorage-only) mirrors it to
-   * a cookie, so it can outlive the `identity` record. Minting one here would
-   * therefore invent a second device for a browser that already has one.
-   */
-  storedDeviceId?: string | null;
-};
-
-export type ResolvedIrisIdentity = {
-  distinctId: string;
-  deviceId: string | null;
-  /** True when this call minted the id rather than adopting a stored one. */
-  seeded: boolean;
-};
-
 const present = (v: unknown): string | null =>
   typeof v === 'string' && v !== '' ? v : null;
 
 /**
- * Adopt the stored id if there is one, otherwise mint AND write so the SDK adopts
- * ours instead of minting a second id a second later.
+ * Which id an Iris event goes out under, plus the device id to carry.
  *
- * Whoever runs first wins, which is what makes this symmetric: on a warm visit the
- * SDK has already written and the pixel adopts; on a cold one the pixel writes
- * first and the SDK adopts.
+ * Adopt the SDK's stored id when there is one; fall back to the pixel's own.
+ * Once the visitor is known the email wins — never downgrade a known person
+ * back to an anonymous id just because one is stored.
  */
-export async function resolveIrisIdentity(io: IrisIdentityIo): Promise<ResolvedIrisIdentity> {
-  let existing: IrisIdentity | null = null;
-  try {
-    existing = await io.read();
-  } catch (_e) {
-    // An unreadable record is treated as absent — seeding is still better than
-    // letting every event pick its own id.
-  }
-  const stored = present(existing?.distinctId);
-  if (stored) {
-    return { distinctId: stored, deviceId: present(existing?.deviceId), seeded: false };
-  }
-
-  // Anonymous only. A known email belongs to identify(), which Iris needs in order
-  // to alias the anonymous history onto the person; seeding the email here would
-  // skip that and strand the browsing history.
-  const anonymousId = io.pixelDistinctId.includes('@') ? io.mintId() : io.pixelDistinctId;
-  // Carry a device id through if the SDK already has one, but NEVER mint one — see
-  // storedDeviceId. A browser can legitimately have a device_id and no identity
-  // (localStorage cleared, cookie kept), and inventing one there would fork the
-  // device. Omitting the field leaves the SDK's own getOrCreateDeviceId to recover
-  // or create it, which is the only code that knows where else it lives.
-  const deviceId = present(io.storedDeviceId);
-  try {
-    await io.write({
-      distinctId: anonymousId,
-      anonymousId,
-      ...(deviceId ? { deviceId } : {}),
-      aliases: [],
-    });
-  } catch (_e) {
-    // Storage blocked (private browsing). Still return the minted id so at least
-    // this page's events agree with each other.
-  }
-  return { distinctId: anonymousId, deviceId, seeded: true };
-}
-
-/**
- * Which id an Iris event goes out under.
- *
- * Once the visitor is known the email wins — never downgrade a known person back
- * to an anonymous id just because one is stored.
- */
-export function chooseIrisDistinctId(
+export function chooseIrisIdentity(
   pixelDistinctId: string,
-  storedId: string | null,
-): string {
+  stored: IrisIdentity | null,
+): { distinctId: string; deviceId: string | null } {
+  const deviceId = present(stored?.deviceId);
   if (pixelDistinctId.includes('@')) {
-    return pixelDistinctId;
+    return { distinctId: pixelDistinctId, deviceId };
   }
-  return present(storedId) || pixelDistinctId;
+  return { distinctId: present(stored?.distinctId) || pixelDistinctId, deviceId };
 }
