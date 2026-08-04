@@ -27,6 +27,14 @@ isn't re-litigated.
   before the pixel's first read, with pixel wire id, `getDistinctId()`, and stored record
   all agreeing on one id. The seed the pixel briefly carried never fired and was deleted.
   Shops with no theme embed just use the pixel's own id — still one consistent person.
+- **2026-08-04 addendum — the race flips.** A real cold load on the quickstart store
+  (02:29:49Z, incognito) showed the *pixel* minting 77 ms **before** SDK 2.231.0 — the
+  39 ms result proved the SDK writes fast, not that it always writes first. Load order
+  varies run to run. Later events adopted correctly (the per-event fresh read works), so
+  only the FIRST send is exposed. Fix: the first send is gated on the SDK's
+  `identity` + `session` appearing (50 ms poll, 3 s cap; `waitForIrisSdk` in
+  `iris-identity.ts`), minting nothing on timeout. The Iris team documents the
+  both-orders race and this poll guidance on the contract page.
 
 ## Original findings that still stand
 

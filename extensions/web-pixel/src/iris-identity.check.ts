@@ -7,9 +7,9 @@
  */
 import assert from 'node:assert';
 import type { IrisIdentity } from './iris-identity';
-import { chooseIrisIdentity } from './iris-identity';
+import { chooseIrisIdentity, waitForIrisSdk } from './iris-identity';
 
-function main() {
+async function main() {
   /* ── The SDK's stored id wins for anonymous visitors ─────────────────────── */
   {
     const got = chooseIrisIdentity('pixel-id', {
@@ -55,7 +55,38 @@ function main() {
     assert.strictEqual(got.deviceId, 'sdk-dev', 'the device id still comes through');
   }
 
-  console.log('web-pixel iris-identity: read-only adopt, email wins, empty is absent ✓');
+  /* ── First-send gate: the cold race runs both ways ───────────────────────── */
+  const noWait = async () => {};
+  {
+    // Warm load: records already stored → zero waits, resolves on the first probe.
+    let probes = 0;
+    let waited = false;
+    const ok = await waitForIrisSdk(
+      async () => (probes += 1) > 0,
+      async () => {
+        waited = true;
+      },
+    );
+    assert.strictEqual(ok, true, 'stored records must pass the gate');
+    assert.strictEqual(probes, 1, 'the first probe runs immediately');
+    assert.strictEqual(waited, false, 'a warm load must not wait at all');
+  }
+  {
+    // Cold load: SDK shows up mid-poll → gate opens as soon as it does.
+    let probes = 0;
+    const ok = await waitForIrisSdk(async () => (probes += 1) >= 3, noWait);
+    assert.strictEqual(ok, true, 'must keep polling until the SDK shows up');
+    assert.strictEqual(probes, 3, 'must stop polling the moment it does');
+  }
+  {
+    // No embed: gate times out false — the caller minted nothing, it just proceeds.
+    const ok = await waitForIrisSdk(async () => false, noWait, 200, 50);
+    assert.strictEqual(ok, false, 'timeout must report false, not hang');
+  }
+
+  console.log(
+    'web-pixel iris-identity: read-only adopt, email wins, empty is absent, first send gated ✓',
+  );
 }
 
-main();
+void main();

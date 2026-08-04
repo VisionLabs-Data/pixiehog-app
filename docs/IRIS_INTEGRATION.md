@@ -93,7 +93,12 @@ authoritative record per the upstream *Identity Storage Contract* (Iris docs →
 JavaScript SDK); the `distinct_id` / `device_id` keys are derived mirrors and
 are never read. The pixel is READ-ONLY on the SDK's namespace: when nothing is
 stored (no theme embed on the shop) it just uses its own id — see
-`extensions/web-pixel/src/iris-identity.ts`. Without the shared key, one visit
+`extensions/web-pixel/src/iris-identity.ts`. Because the cold-load race runs
+both ways (the pixel has been observed minting 77ms *before* the SDK), the
+first send waits — bounded at 3s — for the SDK's `identity` + `session` to
+appear before reading; later events re-read fresh per event, so a
+late-loading embed is adopted mid-session. On timeout the pixel proceeds with
+its own ids and still writes nothing. Without the shared key, one visit
 split into two sessions and two people — storefront browsing under the SDK's
 ids, cart and checkout under the pixel's — and the purchase session carried no
 landing page or UTMs, because the pixel only ever sees the checkout URL.
