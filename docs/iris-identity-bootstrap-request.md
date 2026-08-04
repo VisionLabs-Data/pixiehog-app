@@ -64,6 +64,16 @@ isn't re-litigated.
   `identity` + session-shell write in their 1.4KB loader (core enriches the shell with
   entry attribution at init), which will make the gate resolve on the first probe in
   virtually every load — no changes needed on our side for it.
+- **2026-08-04, final — parse-time seed live (SDK 2.232.1).** Their loader now seeds
+  `identity` + a session shell synchronously at parse time (core enriches the shell with
+  entry attribution on arrival), and session creation now writes through like `identity`
+  instead of riding the ~1s storage debounce — a second gap they found while verifying
+  (our gate used to sit until ~1462ms on the session key). Measured with vizhog-28
+  unchanged: slow core (1.2s delay) — seed at 139ms, pixel pageview at 415ms with the
+  seeded id AND session, entry utms/fbclid intact after enrichment; fast core —
+  identity@36ms, session@37ms, pageview at 247ms. The gate resolves on the first probe or
+  two in every load shape; the timeout heal is a true edge case. The 2.232.0 timing
+  guarantee is on their contract page.
 
 ## Original findings that still stand
 
