@@ -8,6 +8,12 @@
  * `identity` is the SDK's authoritative record. `distinct_id` and `device_id` are
  * mirrors it rewrites from `identity` on init — verified on a live storefront:
  * seeding the mirrors is ignored, seeding `identity` is adopted verbatim.
+ *
+ * Reading a mirror instead of `identity` was the original bug. Measured cold:
+ * `identity` is there at 171ms, the mirrors at 1967ms, and the pixel's first event
+ * goes at ~2100ms — so the mirror read had ~130ms of margin and lost often enough
+ * to split visitors. Adopting is the normal path; seeding is the fallback for when
+ * no SDK is present at all.
  */
 export type IrisIdentity = {
   distinctId?: string;

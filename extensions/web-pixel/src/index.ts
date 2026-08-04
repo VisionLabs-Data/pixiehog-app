@@ -269,23 +269,31 @@ register(async (extensionApi) => {
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
   /**
-   * One shared id, seeded by whoever runs first — no alias.
+   * One shared id: READ `identity`, and only seed it when nothing is stored.
    *
-   * The pixel reaches its first event before the SDK publishes an identity
-   * (measured: pixel posts at ~2.1s, SDK writes at ~3.1s). Reading alone
-   * therefore finds nothing, falls back to the pixel's own id, and splits one
-   * visit across two people — with the landing page and UTMs on the wrong one.
+   * `identity` is the SDK's authoritative record. `distinct_id` and `device_id` are
+   * mirrors it rewrites from `identity`, and reading a mirror was the whole bug —
+   * measured on a live cold load:
    *
-   * This is exactly the problem PostHog doesn't have: there, the pixel is a peer
-   * WRITER on the shared `ph_*` key (see resolveDistinctId), so whichever surface
-   * runs first mints the id and the other adopts it. Iris now works the same way.
-   * Earlier attempts to paper over the race — first a blocking wait, then a
-   * background `$identify` alias — were both treating a storage-coordination
-   * problem as a timing problem.
+   *     identity     171ms      <- available all along
+   *     distinct_id  1967ms     <- what this code used to read
+   *     pixel's first event at ~2100ms
    *
-   * `identity` is the authoritative record; `distinct_id` and `device_id` are
-   * mirrors the SDK rewrites from it on init. Verified against a live storefront:
-   * seeding those mirrors is ignored, seeding `identity` is adopted verbatim.
+   * So the old read had ~130ms of margin and lost the race often enough to split
+   * visitors across two people, with the landing page and UTMs on the wrong one.
+   * Reading `identity` gives a >10x margin instead. Two earlier "fixes" — a
+   * blocking wait, then a background `$identify` alias — were both compensating
+   * for reading the wrong key, which is why neither ever felt right.
+   *
+   * Beware: an earlier measurement put the SDK's write at ~3.1s and framed this as
+   * the SDK persisting too late. That was wrong — the cold-start clear ran before
+   * navigation, so the outgoing page's SDK re-persisted and the "cold" load was
+   * warm. Clear at `document_start` if you ever re-measure this.
+   *
+   * The seed remains for the genuinely-absent case (no theme embed on this shop, or
+   * an unusually slow bundle): mint and write so the SDK adopts ours rather than
+   * minting a second id. Verified that seeding `identity` is adopted verbatim while
+   * seeding the mirrors is ignored. It is a rare fallback now, not the normal path.
    *
    * Session is deliberately NOT seeded. The SDK owns session semantics along with
    * landing page and UTM attribution, and a hand-built session record risks
