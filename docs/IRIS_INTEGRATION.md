@@ -115,6 +115,39 @@ PostHog's payload is unchanged. Falls back to the pixel's own ids if the
 merchant runs the SDK under a custom global name (storage prefix is then not
 `mythic_`).
 
+## Privacy: erasure relay (pending upstream)
+
+VizHog persists **no** customer data — `Session` is the only Prisma model — so
+the mandatory privacy webhooks record that fact rather than deleting rows; see
+`app/common.server/compliance.ts`. The customer copies live in the merchant's own
+PostHog project and Iris workspace, and we hold ingest-only credentials for both
+(`phc_` can't delete — PostHog needs a personal API key; Iris `pk_` only ingests).
+
+Iris is building `DELETE /client/v1/data/people/:id` (`ak_` credential, likely
+async). When it ships, `webhooks.customers.redact.tsx` can relay instead of
+handing the request back to the merchant. That needs a secret-key setting in the
+UI, deliberately **not built yet** — the Iris team will publish path, method,
+credential and sync-vs-async together so it's one piece of work.
+
+The payload they want, and what we can actually supply from Shopify's
+`customers/redact` webhook:
+
+| Field | Source | Have it? |
+|---|---|---|
+| `shop_domain` | webhook `shop` | yes |
+| Shopify `customer_id` | `payload.customer.id` | yes |
+| `email` | `payload.customer.email` | yes |
+| `phone` | `payload.customer.phone` | yes |
+| `requested_at` | receipt time | yes |
+| `location_id` | — | **no** — VizHog has no location concept; derive from the `pk_` key |
+| anon / device ids | — | **no** — we persist nothing, so we can't enumerate them |
+
+The two gaps are structural, not an omission. Because VizHog keeps no customer
+records, the email from Shopify's payload is the **only** handle we can hand
+over — the pixel's anonymous and device ids exist solely inside Iris's merge
+graph, put there by our own events and `$create_alias`. Their executor resolving
+the whole merge component from one identity value is what makes that sufficient.
+
 ## Where it lives
 
 - Pixel sink: `extensions/web-pixel/src/pixiehog-iris.ts` (wired in `src/index.ts`)

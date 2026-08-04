@@ -86,12 +86,18 @@ export function auditCompliance<T extends Record<string, string | number | boole
  * the answer sits next to the request instead of living only in a support reply.
  *
  * Deliberately specific about each destination, because "ask your provider" is
- * not equally actionable: PostHog has a self-serve person delete, Iris does not
- * yet (confirmed with the Iris team 2026-08-04 — an `ak_`-authorized
- * `DELETE /client/v1/data/people/:id` is scoped but unbuilt, so erasure there is
- * a request to the provider today). When that endpoint ships, VizHog can relay
- * erasure itself instead of handing it back — which needs a secret-key setting,
- * since `pk_` can only ingest.
+ * not equally actionable: PostHog has a self-serve person delete; Iris is a
+ * request to the provider, which they execute against an intake log with an
+ * audit record (confirmed with the Iris team 2026-08-04 — not self-serve, but
+ * not a black hole either: their executor resolves the subject across the merge
+ * graph and clears Postgres, Tinybird, BigQuery, the Redis identity cache and
+ * session-replay blobs, including the `$set` blocks inside raw events).
+ *
+ * An `ak_`-authorized `DELETE /client/v1/data/people/:id` is next on their side
+ * but unbuilt. When it ships, VizHog can relay erasure instead of handing it
+ * back — see docs/IRIS_INTEGRATION.md for the payload they want and the two
+ * fields we can't supply. Deliberately not building the secret-key setting that
+ * needs until they publish path, method, credential and sync-vs-async together.
  */
 export const DOWNSTREAM_CONTROLLER_NOTE =
-  'VizHog stores no customer data; it forwards events to the merchant-owned PostHog project and Iris workspace. Erasure must be actioned there by the merchant as controller: PostHog via its person-deletion API or UI, Iris by request to the provider (no self-serve erasure endpoint as of 2026-08).';
+  'VizHog stores no customer data; it forwards events to the merchant-owned PostHog project and Iris workspace. Erasure is actioned there by the merchant as controller: PostHog via its person-deletion API or UI, Iris by request to the provider, who executes it with an audit record (not self-serve as of 2026-08).';
