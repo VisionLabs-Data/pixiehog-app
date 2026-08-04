@@ -56,9 +56,14 @@ isn't re-litigated.
   the vizhog-26 gate ON TOP of the heal: first send gates on `identity` + `session`
   (immediate first probe, 50ms poll, 3s cap), timeout falls through to the vizhog-27
   alias heal. Whole sessions whenever the SDK arrives within the cap; person-level healing
-  for the tail. Iris is considering a synchronous parse-time `identity`/`session` write in
-  their 1.4KB loader, which would make the gate resolve on the first probe virtually
-  always.
+  for the tail. **Verified in BOTH orders by the Iris team (2026-08-04):** forced
+  pixel-first (their loader delayed 1.2s) — the gate held, the pageview went out at
+  3298ms under their id AND their session id, one visitor, one session, no heal needed;
+  natural cold load — SDK wrote at 34ms, pageview at 1230ms with their id and session.
+  Session continuity whole in both cases. Iris is now building a synchronous parse-time
+  `identity` + session-shell write in their 1.4KB loader (core enriches the shell with
+  entry attribution at init), which will make the gate resolve on the first probe in
+  virtually every load — no changes needed on our side for it.
 
 ## Original findings that still stand
 
