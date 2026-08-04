@@ -41,7 +41,13 @@ isn't re-litigated.
   shared by every option: the orphan keeps its own session row, and an instant bounce
   before the SDK's record appears stays split. The structural alternative (pixel emits
   only on checkout, SDK owns storefront pageviews) was noted and not taken — it
-  restructures the event model.
+  restructures the event model. **Verified end-to-end by the Iris team (2026-08-04)**
+  with a forced pixel-first race (1.2s delay on their loader): pixel pageview instant,
+  SDK minted at 1497ms, alias fired ~500ms later with the right orientation;
+  `identity_lookup` maps both ids to one person, one `person_profile` row, and the
+  orphan pageview's UTM/landing attribution survived the merge. The heal pattern is
+  documented on their contract page as the supported shape for surfaces that cannot
+  hold their first event.
 
 ## Original findings that still stand
 
