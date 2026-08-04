@@ -5,15 +5,16 @@
  * mode is silent (events keep flowing, just attributed to two people) and it only
  * shows up on a cold first visit, which is the hardest case to notice by hand.
  *
- * `identity` is the SDK's authoritative record. `distinct_id` and `device_id` are
- * mirrors it rewrites from `identity` on init — verified on a live storefront:
- * seeding the mirrors is ignored, seeding `identity` is adopted verbatim.
+ * The contract is documented upstream — read it before changing anything here:
+ * Mythic/Iris docs -> JavaScript SDK -> Identity Storage Contract. In short:
+ * `identity` is the authoritative record and is adopted verbatim at init when
+ * present; `distinct_id` is derived state and must never be read; `device_id` is
+ * real state the SDK reads back, so it must never be minted here.
  *
- * Adopting is the path that matters. **Seeding only holds on a shop with no Iris
- * theme embed at all** — where the SDK is present, it stages its own id in memory
- * before the pixel gets here and its debounced flush overwrites the seed ~1s later.
- * See the timeline in index.ts. Seeding is kept because it is correct for the
- * no-SDK case and harmless otherwise, not because it wins the cold race.
+ * Adopting is the path that matters. Since SDK 2.230.5 the SDK writes `identity`
+ * write-through at init (~95ms), so the pixel's read normally finds it and this
+ * seeds nothing. Seeding remains for the case where no Iris theme embed will ever
+ * run on the shop, and is harmless where one does.
  */
 export type IrisIdentity = {
   distinctId?: string;

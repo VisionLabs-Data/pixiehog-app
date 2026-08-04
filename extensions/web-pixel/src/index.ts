@@ -271,33 +271,30 @@ register(async (extensionApi) => {
   /**
    * One shared id: READ `identity`, and only seed it when nothing is stored.
    *
-   * `identity` is the SDK's authoritative record; `distinct_id` and `device_id` are
-   * mirrors. Read `identity`, never a mirror.
+   * The contract is documented upstream: Mythic/Iris docs -> JavaScript SDK ->
+   * Identity Storage Contract. `identity` is authoritative and is adopted verbatim at
+   * init when present; `distinct_id` is derived; `device_id` is real state.
    *
-   * READ THIS BEFORE TRUSTING THE SEED. Measured on a genuine cold load, tracking
-   * every mutation of the record (`/private/tmp/iris-handoff/overwrite.mjs`):
+   * Since SDK 2.230.5 the SDK writes `identity` write-through at init, measured at
+   * 92-95ms via setItem, and it is NOT in the ~1193ms debounced batch — so it is not
+   * clobbered afterwards. The pixel's read therefore normally finds the SDK's id and
+   * adopts it, and the seed below does nothing. The seed exists for shops with no
+   * Iris theme embed, where nothing else will ever write the record.
    *
-   *      110ms  pixel writes its own `ph_*` id
-   *   ~100ms    SDK core loads and mints its id IN MEMORY (no write — see below)
-   *      187ms  pixel reads `identity`, finds nothing, seeds its own id
-   *     1191ms  SDK's debounced flush OVERWRITES `identity` with the SDK's id
-   *
-   * The SDK's StorageManager stages every write and flushes on a 1000ms debounce, so
-   * on a cold load nothing is in storage when the pixel looks — and the seed loses,
-   * because the SDK had already minted in memory before the pixel wrote. So the seed
-   * does NOT fix the cold case it was originally written for. It only holds where
-   * nothing will ever overwrite it: a shop with no Iris theme embed at all.
-   *
-   * The real fix is on the SDK side — flushing `identity` write-through at init, so
-   * the pixel's read at ~175ms finds the SDK's id and adopts it. Confirm that has
-   * shipped to `api.adberserk.com/cdn/m.js` before believing cold loads are stitched;
-   * until then a cold visitor is split, and that is not something this code can fix.
-   *
-   * Two measurement traps, both of which produced wrong conclusions here:
-   * clearing localStorage BEFORE navigating lets the outgoing page's SDK re-persist,
-   * so you measure a warm load; and seeding then navigating tests adoption-at-init,
-   * not the cold single-load race. Clear at `document_start`, and check provenance by
-   * value (the seed reuses the pixel's `ph_*` id) rather than by timing.
+   * MEASUREMENT TRAPS — every one of these produced a confident wrong conclusion in
+   * this file's history. If you re-measure, avoid all four:
+   *  1. Clearing localStorage BEFORE navigating: the outgoing page's SDK re-persists
+   *     in the gap, so you measure a warm load and think the SDK wrote early.
+   *  2. Clearing in a Playwright `addInitScript`: it runs in EVERY frame, and Shopify
+   *     spawns same-origin about:blank iframes for the pixel sandbox (measured at
+   *     98/130/131ms) — so the clear deletes the SDK's write mid-load and the pixel
+   *     legitimately finds nothing. Use a pristine context with an injected cookie.
+   *  3. Seed-then-navigate: tests adoption-at-init, not the cold single-load race, so
+   *     it passes while the cold path is broken.
+   *  4. Truncating trace output (`| tail -n`): the SDK's write is the FIRST entry and
+   *     ~85 posthog-js writes sit between it and the pixel's, so tail hides it.
+   * Attribute a write by PROVENANCE, not timing: hook `Storage.prototype.setItem` and
+   * read the stack, or compare values (the seed reuses the pixel's `ph_*` id).
    *
    * Session is deliberately NOT seeded. The SDK owns session semantics along with
    * landing page and UTM attribution, and a hand-built session record risks
