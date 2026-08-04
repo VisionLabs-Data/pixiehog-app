@@ -17,16 +17,25 @@
  * The cold race runs BOTH ways: the 39ms cold test proved the SDK writes fast,
  * not that it always writes first — a 2026-08-04 wire trace on the same store
  * showed the pixel minting 77ms BEFORE the SDK. Only the first event races
- * (later ones re-read and adopt). Events are never held or delayed for it —
- * a bounded gate on the first send was built and reverted as janky. Instead,
- * when the pixel sends under a self-minted id off an empty read, it watches
- * storage in the background (`watchForSdkIdentity`) and, if the SDK's record
- * appears with a DIFFERENT id, emits one `$create_alias` linking the minted id
- * to the SDK's — Iris's identity processor explicitly allows anonymous→anonymous
- * aliases and merges the two persons, reattaching the orphan first event.
- * Known residual (shared by every option): the orphan keeps its own session row
- * in session analytics, and an instant bounce before the SDK's record ever
- * appears stays split.
+ * (later ones re-read and adopt). Two layered defenses, both wire-verified by
+ * the Iris team:
+ *
+ * 1. GATE (`waitForIrisSdk`): the first send waits — 50ms poll, 3s cap, first
+ *    probe immediate so warm loads never wait — for `identity` + `session` to
+ *    appear. A gated first pageview joins the SDK's session, so session-level
+ *    attribution stays whole. (An alias can't fix sessions after the fact:
+ *    events are immutable once sent — a race-losing paid landing otherwise
+ *    yields a blank-attribution session holding the only pageview plus an
+ *    attributed session with zero pageviews.)
+ * 2. HEAL on timeout (`watchForSdkIdentity`): send under the minted id, watch
+ *    storage in the background, and when the SDK's record appears with a
+ *    DIFFERENT id emit one `$create_alias` — Iris's identity processor
+ *    explicitly allows anonymous→anonymous aliases and merges the two persons,
+ *    reattaching the orphan event.
+ *
+ * Known residual (shared by every option): a healed orphan keeps its own
+ * session row, and an instant bounce before the SDK's record ever appears
+ * stays split.
  */
 export type IrisIdentity = {
   distinctId?: string;
@@ -57,7 +66,26 @@ export function chooseIrisIdentity(
 }
 
 /**
- * Background watch for the SDK's identity record showing up AFTER the pixel
+ * Layer 1 — the first-send gate. Poll until `probe` reports the SDK's records
+ * are readable, or give up after `timeoutMs`. Resolves true if the SDK showed
+ * up, false on timeout. The first probe runs immediately, so a warm load
+ * (records already stored) never waits.
+ */
+export async function waitForIrisSdk(
+  probe: () => Promise<boolean>,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  timeoutMs = 3000,
+  intervalMs = 50,
+): Promise<boolean> {
+  for (let elapsed = 0; ; elapsed += intervalMs) {
+    if (await probe()) return true;
+    if (elapsed >= timeoutMs) return false;
+    await wait(intervalMs);
+  }
+}
+
+/**
+ * Layer 2 — background watch for the SDK's identity record showing up AFTER the pixel
  * already read empty and self-minted. Resolves with the stored record when it
  * appears, or null on timeout (no theme embed, or a cold landing straight onto
  * checkout). Never sits in front of an event send — the caller fires and

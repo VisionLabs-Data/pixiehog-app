@@ -95,15 +95,19 @@ are never read. The pixel is READ-ONLY on the SDK's namespace: when nothing is
 stored (no theme embed on the shop) it just uses its own id — see
 `extensions/web-pixel/src/iris-identity.ts`. Because the cold-load race runs
 both ways (the pixel has been observed minting 77ms *before* the SDK), the
-first event can go out under a self-minted id — it is sent instantly, never
-held. The pixel then watches storage in the background and, when the SDK's
-record appears with a different id, emits one `$create_alias`
-(`distinct_id` = the SDK's id, `properties.alias` = the minted id); Iris's
-identity processor allows anonymous→anonymous aliases and merges the two
-persons, reattaching the orphan event. Later events re-read fresh per event,
-so a late-loading embed is adopted mid-session anyway. Known residual: the
-orphan event keeps its own session row in session analytics, and an instant
-bounce before the SDK's record ever appears stays split. Without the shared key, one visit
+first send is defended in two layers. **Gate:** it waits — 50ms poll, 3s cap,
+first probe immediate so warm loads never wait — for the SDK's
+`identity` + `session` to appear, so the pageview joins the SDK's session and
+session-level attribution stays whole (an alias can't fix sessions after the
+fact; events are immutable once sent). **Heal on timeout:** it sends under a
+self-minted id, watches storage in the background, and when the SDK's record
+appears with a different id emits one `$create_alias` (`distinct_id` = the
+SDK's id, `properties.alias` = the minted id); Iris's identity processor
+allows anonymous→anonymous aliases and merges the two persons, reattaching
+the orphan event. Later events re-read fresh per event, so a late-loading
+embed is adopted mid-session anyway. Known residual: a healed orphan keeps
+its own session row in session analytics, and an instant bounce before the
+SDK's record ever appears stays split. Without the shared key, one visit
 split into two sessions and two people — storefront browsing under the SDK's
 ids, cart and checkout under the pixel's — and the purchase session carried no
 landing page or UTMs, because the pixel only ever sees the checkout URL.

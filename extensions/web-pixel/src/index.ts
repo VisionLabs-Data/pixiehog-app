@@ -15,7 +15,7 @@ import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/even
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
 import type { IrisIdentity } from './iris-identity';
-import { chooseIrisIdentity, watchForSdkIdentity } from './iris-identity';
+import { chooseIrisIdentity, waitForIrisSdk, watchForSdkIdentity } from './iris-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -284,10 +284,13 @@ register(async (extensionApi) => {
    *
    * The cold race runs both ways (a wire trace showed the pixel minting 77ms
    * before the SDK), and only the first event is exposed — later ones re-read
-   * fresh. Events are never held for it: when the pixel sends under a
-   * self-minted id off an empty read, `healIrisSplit` below aliases it to the
-   * SDK's id once that appears, and Iris's identity tier merges the persons.
+   * fresh. Layered defense (see iris-identity.ts): the first send gates on the
+   * SDK's records appearing (3s cap, warm loads never wait) so the pageview
+   * joins the SDK's session; on timeout it sends under a self-minted id and
+   * `healIrisSplit` aliases it to the SDK's id once that appears, so Iris's
+   * identity tier merges the persons.
    */
+  let irisSdkGate: Promise<boolean> | undefined;
   let irisHealStarted = false;
 
   function healIrisSplit(mintedId: string) {
@@ -302,6 +305,18 @@ register(async (extensionApi) => {
   }
 
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
+    irisSdkGate ??= waitForIrisSdk(async () => {
+      const [session, identity] = await Promise.all([
+        readIrisSdkValue<{ id?: string }>('session'),
+        readIrisSdkValue<IrisIdentity>('identity'),
+      ]);
+      return Boolean(
+        str(session && typeof session === 'object' ? session.id : null) &&
+          str(identity?.distinctId),
+      );
+    });
+    await irisSdkGate;
+
     const [session, stored] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
       readIrisSdkValue<IrisIdentity>('identity'),
@@ -309,8 +324,9 @@ register(async (extensionApi) => {
     const sdkSessionId = str(session && typeof session === 'object' ? session.id : null);
     const identity = chooseIrisIdentity(distinctId, stored);
 
-    // Empty read + anonymous pixel id = this event goes out under a self-minted
-    // id that the SDK doesn't know about. Start the one-shot background heal.
+    // Empty read + anonymous pixel id = the gate timed out and this event goes
+    // out under a self-minted id the SDK doesn't know about. Start the one-shot
+    // background heal. (After a successful gate this can't be reached.)
     if (!str(stored?.distinctId ?? null) && !distinctId.includes('@')) {
       healIrisSplit(identity.distinctId);
     }

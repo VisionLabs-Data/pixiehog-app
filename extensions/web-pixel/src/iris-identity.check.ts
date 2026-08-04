@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert';
 import type { IrisIdentity } from './iris-identity';
-import { chooseIrisIdentity, watchForSdkIdentity } from './iris-identity';
+import { chooseIrisIdentity, waitForIrisSdk, watchForSdkIdentity } from './iris-identity';
 
 async function main() {
   /* ── The SDK's stored id wins for anonymous visitors ─────────────────────── */
@@ -55,8 +55,36 @@ async function main() {
     assert.strictEqual(got.deviceId, 'sdk-dev', 'the device id still comes through');
   }
 
-  /* ── Background heal watch: the cold race runs both ways ─────────────────── */
+  /* ── Layer 1, first-send gate: warm loads never wait ─────────────────────── */
   const noWait = async () => {};
+  {
+    // Warm load: records already stored → zero waits, resolves on the first probe.
+    let probes = 0;
+    let waited = false;
+    const ok = await waitForIrisSdk(
+      async () => (probes += 1) > 0,
+      async () => {
+        waited = true;
+      },
+    );
+    assert.strictEqual(ok, true, 'stored records must pass the gate');
+    assert.strictEqual(probes, 1, 'the first probe runs immediately');
+    assert.strictEqual(waited, false, 'a warm load must not wait at all');
+  }
+  {
+    // Cold load: SDK shows up mid-poll → gate opens as soon as it does.
+    let probes = 0;
+    const ok = await waitForIrisSdk(async () => (probes += 1) >= 3, noWait);
+    assert.strictEqual(ok, true, 'must keep polling until the SDK shows up');
+    assert.strictEqual(probes, 3, 'must stop polling the moment it does');
+  }
+  {
+    // No embed: gate times out false — the caller falls through to the heal.
+    const ok = await waitForIrisSdk(async () => false, noWait, 200, 50);
+    assert.strictEqual(ok, false, 'timeout must report false, not hang');
+  }
+
+  /* ── Layer 2, background heal watch after a gate timeout ─────────────────── */
   {
     // SDK shows up mid-watch → resolves with its record, stops reading.
     let reads = 0;
@@ -83,7 +111,7 @@ async function main() {
   }
 
   console.log(
-    'web-pixel iris-identity: read-only adopt, email wins, empty is absent, split heals via alias ✓',
+    'web-pixel iris-identity: read-only adopt, email wins, gated first send, alias heal on timeout ✓',
   );
 }
 

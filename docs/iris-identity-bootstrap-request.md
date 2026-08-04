@@ -48,6 +48,17 @@ isn't re-litigated.
   orphan pageview's UTM/landing attribution survived the merge. The heal pattern is
   documented on their contract page as the supported shape for surfaces that cannot
   hold their first event.
+- **2026-08-04, later — layered (vizhog-28).** Session-level wire data changed the call:
+  the healed orphan pageview carries no session-entry properties, so on a store where the
+  pixel is the only pageview source, a race-losing paid landing yields a blank-attribution
+  bounce session holding the only pageview PLUS an attributed session with zero pageviews —
+  and the alias cannot fix it, events are immutable once sent. Stockton approved restoring
+  the vizhog-26 gate ON TOP of the heal: first send gates on `identity` + `session`
+  (immediate first probe, 50ms poll, 3s cap), timeout falls through to the vizhog-27
+  alias heal. Whole sessions whenever the SDK arrives within the cap; person-level healing
+  for the tail. Iris is considering a synchronous parse-time `identity`/`session` write in
+  their 1.4KB loader, which would make the gate resolve on the first probe virtually
+  always.
 
 ## Original findings that still stand
 
