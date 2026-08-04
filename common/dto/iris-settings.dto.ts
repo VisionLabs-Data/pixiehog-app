@@ -18,8 +18,9 @@ export const irisEnabledPrimitive = z.boolean().default(false);
  * Whether the Iris SDK theme app embed is switched on.
  *
  * Nothing reads this any more. It existed to tell the pixel whether waiting for
- * the SDK's identity could pay off; the pixel now seeds the shared identity key
- * instead of waiting, and seeding is correct whether or not an SDK ever loads.
+ * the SDK's identity could pay off; the pixel now decides that at runtime —
+ * it gates its first send on the SDK's records appearing and falls back to an
+ * alias heal on timeout, which is correct whether or not an SDK ever loads.
  * Removal candidate — left in place only because dropping a declared pixel
  * settings field forces every shop through a pixel recalculate.
  */
