@@ -21,7 +21,7 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "tsc --noEmit",
-    "check": "tsx app/common.server/iris/order-to-event.check.ts && tsx common/dto/iris-js-settings.check.ts && tsx common/dto/web-pixel-settings.check.ts && tsx extensions/posthog-js/iris-config.check.ts && tsx extensions/web-pixel/src/event-naming.check.ts && tsx extensions/web-pixel/src/privacy.check.ts && tsx extensions/web-pixel/src/validate-uuid.check.ts && tsx extensions/web-pixel/src/wait-for-sdk-identity.check.ts",
+    "check": "tsx app/common.server/iris/order-to-event.check.ts && tsx common/dto/iris-js-settings.check.ts && tsx common/dto/web-pixel-settings.check.ts && tsx extensions/posthog-js/iris-config.check.ts && tsx extensions/web-pixel/src/event-naming.check.ts && tsx extensions/web-pixel/src/privacy.check.ts && tsx extensions/web-pixel/src/validate-uuid.check.ts && tsx extensions/web-pixel/src/iris-identity.check.ts",
     "verify": "npm run typecheck && npm run lint && npm run check"
   },
   "type": "module",

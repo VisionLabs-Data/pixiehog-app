@@ -14,12 +14,8 @@ import { webPixelToPostHogEcommerceSpecTransformerMap } from './posthog-ecommerc
 import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/event-map';
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
-import {
-  shouldExpectSdk,
-  waitForSdkIdentity,
-  SDK_IDENTITY_WAIT_ATTEMPTS,
-  SDK_IDENTITY_WAIT_INTERVAL_MS,
-} from './wait-for-sdk-identity';
+import type { IrisIdentity, ResolvedIrisIdentity } from './iris-identity';
+import { chooseIrisDistinctId, resolveIrisIdentity } from './iris-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -77,9 +73,6 @@ register(async (extensionApi) => {
   const irisApiKey = String(settings.iris_api_key || '').trim();
   const irisApiHost = String(settings.iris_api_host || '').trim() || 'https://mythic-analytics.gulp.workers.dev';
   const irisEnabled = String(settings.iris_enabled || '') == 'true' && !!irisApiKey;
-  // Tri-state on purpose: an absent setting means this pixel's stored settings
-  // predate the field, not that the embed is off.
-  const irisMayHaveSdk = shouldExpectSdk(settings.iris_js_enabled);
   if (!posthog_api_key && !irisEnabled) {
     throw new Error('No analytics provider configured (PostHog or Iris)');
   }
@@ -231,19 +224,20 @@ register(async (extensionApi) => {
   );
 
   /**
-   * Iris identity handoff.
+   * The storage namespace the pixel and the Iris JS SDK share.
    *
-   * The Iris JS SDK running on the storefront keeps its own ids in localStorage
-   * (`mythic_session` -> `{ id, ... }`, `mythic_device_id`, `mythic_distinct_id`
-   * — all JSON-encoded). The pixel's session id lives in PostHog's namespace and
-   * is a DIFFERENT value, so without this handoff one visit lands as two
-   * sessions and two people: storefront browsing under the SDK's ids, cart and
-   * checkout under ours. Worse, the purchase session then has no landing page or
-   * UTMs, because the pixel only sees the checkout URL.
+   * The SDK keeps its state in localStorage under this prefix, all JSON-encoded:
+   * `identity` -> `{ distinctId, anonymousId, deviceId, aliases }` (authoritative),
+   * `session` -> `{ id, landingPage, utm, ... }`, plus `distinct_id` / `device_id`
+   * mirrors it rewrites from `identity`. The pixel's own ids live in PostHog's
+   * namespace and are DIFFERENT values, so without sharing this key one visit
+   * lands as two people: storefront browsing under the SDK's ids, cart and
+   * checkout under ours — and the purchase then has no landing page or UTMs,
+   * because the pixel only ever sees the checkout URL.
    *
    * Shopify proxies `browser.localStorage` to the storefront document (the same
-   * mechanism that lets us read PostHog's `ph_*` keys), so the SDK's values are
-   * readable from the sandbox on both storefront and checkout pages.
+   * mechanism that lets us read PostHog's `ph_*` keys), so these are both readable
+   * and writable from the sandbox, on storefront and checkout pages alike.
    *
    * PostHog's payload is deliberately untouched — this only re-points the Iris
    * sink.
@@ -252,12 +246,14 @@ register(async (extensionApi) => {
    * the SDK writes `mythic_pk_<key>_session`, not `mythic_session`. This code
    * originally assumed the shorter form, so every read returned null, the pixel
    * silently fell back to its own ids, and one visit landed as two people — the
-   * exact failure the handoff exists to prevent. The symptom was invisible from
-   * the outside: events flowed, they were just attributed twice.
+   * exact failure this exists to prevent. The symptom was invisible from the
+   * outside: events flowed, they were just attributed twice.
    *
    * ponytail: assumes the default `mythic` global name. A merchant who sets a
-   * custom `__mythic_global_name` gets a different prefix and falls back to the
-   * pixel's own ids — still correct, just not stitched.
+   * custom `__mythic_global_name` gets a different prefix, so the pixel seeds a
+   * key the SDK never reads and the two mint separate ids — correct data on both
+   * sides, just not stitched. Read `__mythic_global_name` off the settings if that
+   * ever ships as a merchant-facing option.
    */
   const IRIS_SDK_PREFIX = `mythic_${irisApiKey}_`;
 
@@ -273,81 +269,56 @@ register(async (extensionApi) => {
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
   /**
-   * Iris bootstrap alias.
+   * One shared id, seeded by whoever runs first — no alias.
    *
-   * The pixel reaches its first event well before the SDK publishes an identity
-   * (measured: SDK writes at ~3.1s, pixel posts at ~2.1s), so early Iris events
-   * go out under the pixel's own id while later ones adopt the SDK's — one visit
-   * split across two people, with the landing page and UTMs stranded on the
-   * wrong one.
+   * The pixel reaches its first event before the SDK publishes an identity
+   * (measured: pixel posts at ~2.1s, SDK writes at ~3.1s). Reading alone
+   * therefore finds nothing, falls back to the pixel's own id, and splits one
+   * visit across two people — with the landing page and UTMs on the wrong one.
    *
-   * This used to be a blocking wait in front of the first send. Wrong shape: it
-   * delayed the landing pageview, and a delayed event is lost outright if the
-   * shopper leaves first — a mis-attributed pageview traded for a missing one.
-   * Now the event goes immediately and a background watch links the two ids with
-   * `$identify` + `$anon_distinct_id` as soon as the SDK publishes one, which is
-   * the same mechanism Iris already uses to merge anonymous into known.
+   * This is exactly the problem PostHog doesn't have: there, the pixel is a peer
+   * WRITER on the shared `ph_*` key (see resolveDistinctId), so whichever surface
+   * runs first mints the id and the other adopts it. Iris now works the same way.
+   * Earlier attempts to paper over the race — first a blocking wait, then a
+   * background `$identify` alias — were both treating a storage-coordination
+   * problem as a timing problem.
+   *
+   * `identity` is the authoritative record; `distinct_id` and `device_id` are
+   * mirrors the SDK rewrites from it on init. Verified against a live storefront:
+   * seeding those mirrors is ignored, seeding `identity` is adopted verbatim.
+   *
+   * Session is deliberately NOT seeded. The SDK owns session semantics along with
+   * landing page and UTM attribution, and a hand-built session record risks
+   * clobbering exactly the attribution this exists to protect. The cost is that a
+   * cold first event carries no `$session_id`; the person is still right, which is
+   * what actually splits a profile.
    */
-  let irisSentAs: string | null = null;
-  let irisAliasWatchStarted = false;
-
-  // Guarded: if the sandbox ever lacks setTimeout this degrades to reads without
-  // delay (each an async round trip to the document, so not a spin) rather than
-  // throwing inside the watch.
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => {
-      if (typeof setTimeout === 'function') {
-        setTimeout(resolve, ms);
-      } else {
-        resolve();
-      }
-    });
-
-  function startIrisAliasWatch() {
-    if (irisAliasWatchStarted || !iris || !irisMayHaveSdk) {
-      return;
-    }
-    irisAliasWatchStarted = true;
-    // Deliberately not awaited — nothing may block on this.
-    void (async () => {
-      try {
-        const sdkId = await waitForSdkIdentity({
-          read: async () => str(await readIrisSdkValue<string>('distinct_id')),
-          sleep,
-          attempts: SDK_IDENTITY_WAIT_ATTEMPTS,
-          intervalMs: SDK_IDENTITY_WAIT_INTERVAL_MS,
-        });
-        // No SDK, or our first event already went out under its id — either way
-        // there is nothing to merge.
-        if (!sdkId || !irisSentAs || sdkId === irisSentAs) {
-          return;
-        }
-        const session = await readIrisSdkValue<{ id?: string }>('session');
-        await iris.identify(sdkId, irisSentAs, {}, str(session?.id) || undefined);
-      } catch (_e) {
-        // A failed alias must never take capture down with it.
-      }
-    })();
-  }
+  // Memoised: several handlers fire concurrently and some don't await, so two
+  // racing callers must not each see "absent" and seed a different id — that
+  // would reintroduce the split this replaces.
+  let irisIdentityOnce: Promise<ResolvedIrisIdentity> | null = null;
+  const irisIdentity = () =>
+    (irisIdentityOnce ??= resolveIrisIdentity({
+      read: () => readIrisSdkValue<IrisIdentity>('identity'),
+      write: (record) =>
+        localStorage.setItem(IRIS_SDK_PREFIX + 'identity', JSON.stringify(record)),
+      mintId: uuidv7,
+      pixelDistinctId: globalDistinctId,
+    }));
 
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
-    const [session, deviceId, sdkDistinctId] = await Promise.all([
+    const [session, identity] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
-      readIrisSdkValue<string>('device_id'),
-      readIrisSdkValue<string>('distinct_id'),
+      irisIdentity(),
     ]);
     const sdkSessionId = str(session && typeof session === 'object' ? session.id : null);
-    const sdkDevice = str(deviceId);
-    // Once the visitor is known we key on the email — never downgrade that to an
-    // anonymous id just because the SDK has one.
-    const sdkAnon = distinctId.includes('@') ? null : str(sdkDistinctId);
 
     return {
-      distinctId: sdkAnon || distinctId,
+      distinctId: chooseIrisDistinctId(distinctId, identity.distinctId),
       properties: {
         ...properties,
         ...(sdkSessionId ? { $session_id: sdkSessionId } : {}),
-        ...(sdkDevice ? { $device_id: sdkDevice } : {}),
+        ...(identity.deviceId ? { $device_id: identity.deviceId } : {}),
       },
     };
   }
@@ -372,18 +343,12 @@ register(async (extensionApi) => {
     }
     if (iris) {
       const env = await irisEnvelope(distinctId, properties);
-      // Whichever id the first Iris event actually went out under — the alias
-      // watch needs it to know what to merge.
-      if (!irisSentAs) {
-        irisSentAs = env.distinctId;
-      }
       await iris.capture(
         env.distinctId,
         resolveEventName(sourceEventName, irisEcommerceSpecEnabled),
         env.properties,
         options,
       );
-      startIrisAliasWatch();
     }
     // The dataLayer map keys off both naming schemes, so either works; PostHog's
     // is used to keep existing dataLayer consumers unchanged.
