@@ -31,10 +31,17 @@ isn't re-litigated.
   (02:29:49Z, incognito) showed the *pixel* minting 77 ms **before** SDK 2.231.0 — the
   39 ms result proved the SDK writes fast, not that it always writes first. Load order
   varies run to run. Later events adopted correctly (the per-event fresh read works), so
-  only the FIRST send is exposed. Fix: the first send is gated on the SDK's
-  `identity` + `session` appearing (50 ms poll, 3 s cap; `waitForIrisSdk` in
-  `iris-identity.ts`), minting nothing on timeout. The Iris team documents the
-  both-orders race and this poll guidance on the contract page.
+  only the FIRST send is exposed. A bounded gate on the first send (vizhog-26) was built
+  and reverted the same day — Stockton called the poll janky, and holding events is the
+  wrong trade. Fix (vizhog-27): send instantly, and when the first send went out under a
+  self-minted id off an empty read, watch storage in the background
+  (`watchForSdkIdentity`) and emit one `$create_alias` (distinct_id = the SDK's id,
+  `alias` = the minted id) when the SDK's record appears — its identity processor
+  explicitly allows anonymous→anonymous aliases and merges the persons. Known residual,
+  shared by every option: the orphan keeps its own session row, and an instant bounce
+  before the SDK's record appears stays split. The structural alternative (pixel emits
+  only on checkout, SDK owns storefront pageviews) was noted and not taken — it
+  restructures the event model.
 
 ## Original findings that still stand
 

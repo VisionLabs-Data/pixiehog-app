@@ -120,4 +120,14 @@ export class PixieHogIris {
       { uuid: uuidv7() }
     );
   }
+
+  /**
+   * Link two ANONYMOUS ids into one person. Iris's identity processor
+   * explicitly allows anonymous→anonymous aliases; shape per the Iris team:
+   * distinct_id = the id to keep (the SDK's), `alias` = the id being folded in
+   * (the pixel's self-minted one). Same uuid mint as identify, same reason.
+   */
+  async alias(keepId: string, aliasId: string): Promise<void> {
+    await this.capture(keepId, '$create_alias', { alias: aliasId }, { uuid: uuidv7() });
+  }
 }

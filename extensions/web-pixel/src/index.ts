@@ -15,7 +15,7 @@ import { webPixelToPostHogEcommerceSpecMap } from './posthog-ecommerce-spec/even
 import { createBroadcaster } from './broadcast';
 import { resolveAnonymous } from './privacy';
 import type { IrisIdentity } from './iris-identity';
-import { chooseIrisIdentity, waitForIrisSdk } from './iris-identity';
+import { chooseIrisIdentity, watchForSdkIdentity } from './iris-identity';
 
 register(async (extensionApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -278,35 +278,42 @@ register(async (extensionApi) => {
    * its id instead of staying split for the rest of the session.
    *
    * Session is deliberately not written either. The SDK owns session semantics
-   * along with landing page and UTM attribution.
+   * along with landing page and UTM attribution. The cost is that an event
+   * before the SDK's first write carries no `$session_id`; the person is still
+   * right, which is what actually splits a profile.
    *
-   * The FIRST send additionally waits (bounded, 3s) for the SDK's records to
-   * appear: the cold race runs both ways (a wire trace showed the pixel minting
-   * 77ms before the SDK), and only the first event is exposed — later ones
-   * re-read fresh. The gate purely delays; on timeout (no theme embed, or a
-   * cold landing straight onto checkout) the pixel proceeds with its own ids.
+   * The cold race runs both ways (a wire trace showed the pixel minting 77ms
+   * before the SDK), and only the first event is exposed — later ones re-read
+   * fresh. Events are never held for it: when the pixel sends under a
+   * self-minted id off an empty read, `healIrisSplit` below aliases it to the
+   * SDK's id once that appears, and Iris's identity tier merges the persons.
    */
-  let irisSdkGate: Promise<boolean> | undefined;
+  let irisHealStarted = false;
+
+  function healIrisSplit(mintedId: string) {
+    if (irisHealStarted) return;
+    irisHealStarted = true;
+    void watchForSdkIdentity(() => readIrisSdkValue<IrisIdentity>('identity')).then((stored) => {
+      const sdkId = str(stored?.distinctId ?? null);
+      if (iris && sdkId && sdkId !== mintedId) {
+        return iris.alias(sdkId, mintedId);
+      }
+    });
+  }
 
   async function irisEnvelope(distinctId: string, properties: Record<string, any>) {
-    irisSdkGate ??= waitForIrisSdk(async () => {
-      const [session, identity] = await Promise.all([
-        readIrisSdkValue<{ id?: string }>('session'),
-        readIrisSdkValue<IrisIdentity>('identity'),
-      ]);
-      return Boolean(
-        str(session && typeof session === 'object' ? session.id : null) &&
-          str(identity?.distinctId),
-      );
-    });
-    await irisSdkGate;
-
     const [session, stored] = await Promise.all([
       readIrisSdkValue<{ id?: string }>('session'),
       readIrisSdkValue<IrisIdentity>('identity'),
     ]);
     const sdkSessionId = str(session && typeof session === 'object' ? session.id : null);
     const identity = chooseIrisIdentity(distinctId, stored);
+
+    // Empty read + anonymous pixel id = this event goes out under a self-minted
+    // id that the SDK doesn't know about. Start the one-shot background heal.
+    if (!str(stored?.distinctId ?? null) && !distinctId.includes('@')) {
+      healIrisSplit(identity.distinctId);
+    }
 
     return {
       distinctId: identity.distinctId,

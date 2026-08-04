@@ -17,11 +17,16 @@
  * The cold race runs BOTH ways: the 39ms cold test proved the SDK writes fast,
  * not that it always writes first — a 2026-08-04 wire trace on the same store
  * showed the pixel minting 77ms BEFORE the SDK. Only the first event races
- * (later ones re-read and adopt), so the first send waits — bounded — for the
- * SDK's records via `waitForIrisSdk`. Read-only on timeout too: we mint nothing
- * into the SDK's namespace, we just proceed with the pixel's own ids (the legit
- * timeout case is a cold landing straight onto checkout, where the theme embed
- * never runs).
+ * (later ones re-read and adopt). Events are never held or delayed for it —
+ * a bounded gate on the first send was built and reverted as janky. Instead,
+ * when the pixel sends under a self-minted id off an empty read, it watches
+ * storage in the background (`watchForSdkIdentity`) and, if the SDK's record
+ * appears with a DIFFERENT id, emits one `$create_alias` linking the minted id
+ * to the SDK's — Iris's identity processor explicitly allows anonymous→anonymous
+ * aliases and merges the two persons, reattaching the orphan first event.
+ * Known residual (shared by every option): the orphan keeps its own session row
+ * in session analytics, and an instant bounce before the SDK's record ever
+ * appears stays split.
  */
 export type IrisIdentity = {
   distinctId?: string;
@@ -52,19 +57,26 @@ export function chooseIrisIdentity(
 }
 
 /**
- * Poll until `probe` reports the SDK's records are readable, or give up after
- * `timeoutMs`. Resolves true if the SDK showed up, false on timeout. The first
- * probe runs immediately, so a warm load (records already stored) never waits.
+ * Background watch for the SDK's identity record showing up AFTER the pixel
+ * already read empty and self-minted. Resolves with the stored record when it
+ * appears, or null on timeout (no theme embed, or a cold landing straight onto
+ * checkout). Never sits in front of an event send — the caller fires and
+ * forgets it.
+ *
+ * ponytail: 60s cap — an embed that hasn't loaded a minute in isn't loading;
+ * the visitor's later events still adopt via the per-event fresh read.
  */
-export async function waitForIrisSdk(
-  probe: () => Promise<boolean>,
+export async function watchForSdkIdentity(
+  read: () => Promise<IrisIdentity | null>,
   wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
-  timeoutMs = 3000,
-  intervalMs = 50,
-): Promise<boolean> {
-  for (let elapsed = 0; ; elapsed += intervalMs) {
-    if (await probe()) return true;
-    if (elapsed >= timeoutMs) return false;
+  timeoutMs = 60000,
+  intervalMs = 500,
+): Promise<IrisIdentity | null> {
+  // The caller just read empty — wait first, then re-read.
+  for (let elapsed = 0; elapsed < timeoutMs; elapsed += intervalMs) {
     await wait(intervalMs);
+    const stored = await read();
+    if (stored && present(stored.distinctId)) return stored;
   }
+  return null;
 }

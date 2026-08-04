@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert';
 import type { IrisIdentity } from './iris-identity';
-import { chooseIrisIdentity, waitForIrisSdk } from './iris-identity';
+import { chooseIrisIdentity, watchForSdkIdentity } from './iris-identity';
 
 async function main() {
   /* ── The SDK's stored id wins for anonymous visitors ─────────────────────── */
@@ -55,37 +55,35 @@ async function main() {
     assert.strictEqual(got.deviceId, 'sdk-dev', 'the device id still comes through');
   }
 
-  /* ── First-send gate: the cold race runs both ways ───────────────────────── */
+  /* ── Background heal watch: the cold race runs both ways ─────────────────── */
   const noWait = async () => {};
   {
-    // Warm load: records already stored → zero waits, resolves on the first probe.
-    let probes = 0;
-    let waited = false;
-    const ok = await waitForIrisSdk(
-      async () => (probes += 1) > 0,
-      async () => {
-        waited = true;
-      },
+    // SDK shows up mid-watch → resolves with its record, stops reading.
+    let reads = 0;
+    const got = await watchForSdkIdentity(
+      async () => ((reads += 1) >= 3 ? { distinctId: 'sdk-late' } : null),
+      noWait,
     );
-    assert.strictEqual(ok, true, 'stored records must pass the gate');
-    assert.strictEqual(probes, 1, 'the first probe runs immediately');
-    assert.strictEqual(waited, false, 'a warm load must not wait at all');
+    assert.strictEqual(got?.distinctId, 'sdk-late', 'must resolve with the record that appeared');
+    assert.strictEqual(reads, 3, 'must stop reading the moment it does');
   }
   {
-    // Cold load: SDK shows up mid-poll → gate opens as soon as it does.
-    let probes = 0;
-    const ok = await waitForIrisSdk(async () => (probes += 1) >= 3, noWait);
-    assert.strictEqual(ok, true, 'must keep polling until the SDK shows up');
-    assert.strictEqual(probes, 3, 'must stop polling the moment it does');
+    // A record without a usable distinctId must not end the watch.
+    let reads = 0;
+    const got = await watchForSdkIdentity(
+      async () => ((reads += 1) >= 2 ? { distinctId: 'sdk-late' } : { distinctId: '' }),
+      noWait,
+    );
+    assert.strictEqual(got?.distinctId, 'sdk-late', "'' must not count as the SDK showing up");
   }
   {
-    // No embed: gate times out false — the caller minted nothing, it just proceeds.
-    const ok = await waitForIrisSdk(async () => false, noWait, 200, 50);
-    assert.strictEqual(ok, false, 'timeout must report false, not hang');
+    // No embed: times out null — the caller aliases nothing.
+    const got = await watchForSdkIdentity(async () => null, noWait, 1000, 500);
+    assert.strictEqual(got, null, 'timeout must report null, not hang');
   }
 
   console.log(
-    'web-pixel iris-identity: read-only adopt, email wins, empty is absent, first send gated ✓',
+    'web-pixel iris-identity: read-only adopt, email wins, empty is absent, split heals via alias ✓',
   );
 }
 
