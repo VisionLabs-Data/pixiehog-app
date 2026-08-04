@@ -123,11 +123,17 @@ the mandatory privacy webhooks record that fact rather than deleting rows; see
 PostHog project and Iris workspace, and we hold ingest-only credentials for both
 (`phc_` can't delete — PostHog needs a personal API key; Iris `pk_` only ingests).
 
-Iris is building `DELETE /client/v1/data/people/:id` (`ak_` credential, likely
-async). When it ships, `webhooks.customers.redact.tsx` can relay instead of
-handing the request back to the merchant. That needs a secret-key setting in the
-UI, deliberately **not built yet** — the Iris team will publish path, method,
-credential and sync-vs-async together so it's one piece of work.
+Iris is building `DELETE /client/v1/data/people/:id` (likely async). When it
+ships, `webhooks.customers.redact.tsx` can relay instead of handing the request
+back to the merchant. That needs a secret-key setting in the UI, deliberately
+**not built yet** — the Iris team will publish path, method, credential and
+sync-vs-async together so it's one piece of work.
+
+Their current design direction (not ratified — pending Stockton, along with
+whether erasure gets its own permission scope rather than riding an existing
+role): a **location-scoped secret key**, since their `sk_` prefix already binds
+to exactly one location. The credential would then carry the tenant and the relay
+sends no location at all.
 
 The payload they want, and what we can actually supply from Shopify's
 `customers/redact` webhook:
@@ -139,14 +145,25 @@ The payload they want, and what we can actually supply from Shopify's
 | `email` | `payload.customer.email` | yes |
 | `phone` | `payload.customer.phone` | yes |
 | `requested_at` | receipt time | yes |
-| `location_id` | — | **no** — VizHog has no location concept; derive from the `pk_` key |
+| `location_id` | — | **not sent** — VizHog has no location concept; derived from the credential |
 | anon / device ids | — | **no** — we persist nothing, so we can't enumerate them |
 
-The two gaps are structural, not an omission. Because VizHog keeps no customer
-records, the email from Shopify's payload is the **only** handle we can hand
-over — the pixel's anonymous and device ids exist solely inside Iris's merge
-graph, put there by our own events and `$create_alias`. Their executor resolving
-the whole merge component from one identity value is what makes that sufficient.
+The two gaps are structural, not an omission, and both were accepted as design
+inputs: partial identity sets are the target, and location is derived rather than
+required. Because VizHog keeps no customer records, the email from Shopify's
+payload is the **only** handle we can hand over — the pixel's anonymous and
+device ids exist solely inside Iris's merge graph, put there by our own events
+and `$create_alias`. Their executor resolving the whole merge component from one
+identity value is what makes that sufficient, and it now matches email against
+both the identity graph and person properties, case-insensitively (an email that
+arrived only as a `$set` and never became a merge key used to resolve nothing and
+report `no_match` — a deletion that looked successful and erased nothing).
+
+**Stated limit, not a gap:** a visitor who browsed anonymously and never
+identified is unreachable through VizHog by construction — we never learned an
+email, so there is nothing to hand over. The only way to change that would be for
+VizHog to retain customer records, which is worse for everyone. Iris documents
+this on their side too.
 
 ## Where it lives
 
