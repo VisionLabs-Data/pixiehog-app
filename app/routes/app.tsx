@@ -32,9 +32,10 @@ function PosthogInit() {
       posthog.get_distinct_id(), // Replace 'distinct_id' with your user's unique identifier
       { shop: shopify.config.shop } // optional: set additional person properties
     );
-    // The shop never changes within a session, so this is equivalent to [] — it
-    // just stops the exhaustive-deps warning masking a real one later.
-  }, [shopify.config.shop]);
+    // Depend on the bridge object, never `shopify.config.shop`: the dep array is
+    // evaluated during render, including SSR, where App Bridge's `config` getter
+    // throws and 500s the whole embedded app. Only effects may read it.
+  }, [shopify]);
   return null;
 }
 
