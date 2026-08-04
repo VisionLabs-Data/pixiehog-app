@@ -271,29 +271,33 @@ register(async (extensionApi) => {
   /**
    * One shared id: READ `identity`, and only seed it when nothing is stored.
    *
-   * `identity` is the SDK's authoritative record. `distinct_id` and `device_id` are
-   * mirrors it rewrites from `identity`, and reading a mirror was the whole bug —
-   * measured on a live cold load:
+   * `identity` is the SDK's authoritative record; `distinct_id` and `device_id` are
+   * mirrors. Read `identity`, never a mirror.
    *
-   *     identity     171ms      <- available all along
-   *     distinct_id  1967ms     <- what this code used to read
-   *     pixel's first event at ~2100ms
+   * READ THIS BEFORE TRUSTING THE SEED. Measured on a genuine cold load, tracking
+   * every mutation of the record (`/private/tmp/iris-handoff/overwrite.mjs`):
    *
-   * So the old read had ~130ms of margin and lost the race often enough to split
-   * visitors across two people, with the landing page and UTMs on the wrong one.
-   * Reading `identity` gives a >10x margin instead. Two earlier "fixes" — a
-   * blocking wait, then a background `$identify` alias — were both compensating
-   * for reading the wrong key, which is why neither ever felt right.
+   *      110ms  pixel writes its own `ph_*` id
+   *   ~100ms    SDK core loads and mints its id IN MEMORY (no write — see below)
+   *      187ms  pixel reads `identity`, finds nothing, seeds its own id
+   *     1191ms  SDK's debounced flush OVERWRITES `identity` with the SDK's id
    *
-   * Beware: an earlier measurement put the SDK's write at ~3.1s and framed this as
-   * the SDK persisting too late. That was wrong — the cold-start clear ran before
-   * navigation, so the outgoing page's SDK re-persisted and the "cold" load was
-   * warm. Clear at `document_start` if you ever re-measure this.
+   * The SDK's StorageManager stages every write and flushes on a 1000ms debounce, so
+   * on a cold load nothing is in storage when the pixel looks — and the seed loses,
+   * because the SDK had already minted in memory before the pixel wrote. So the seed
+   * does NOT fix the cold case it was originally written for. It only holds where
+   * nothing will ever overwrite it: a shop with no Iris theme embed at all.
    *
-   * The seed remains for the genuinely-absent case (no theme embed on this shop, or
-   * an unusually slow bundle): mint and write so the SDK adopts ours rather than
-   * minting a second id. Verified that seeding `identity` is adopted verbatim while
-   * seeding the mirrors is ignored. It is a rare fallback now, not the normal path.
+   * The real fix is on the SDK side — flushing `identity` write-through at init, so
+   * the pixel's read at ~175ms finds the SDK's id and adopts it. Confirm that has
+   * shipped to `api.adberserk.com/cdn/m.js` before believing cold loads are stitched;
+   * until then a cold visitor is split, and that is not something this code can fix.
+   *
+   * Two measurement traps, both of which produced wrong conclusions here:
+   * clearing localStorage BEFORE navigating lets the outgoing page's SDK re-persist,
+   * so you measure a warm load; and seeding then navigating tests adoption-at-init,
+   * not the cold single-load race. Clear at `document_start`, and check provenance by
+   * value (the seed reuses the pixel's `ph_*` id) rather than by timing.
    *
    * Session is deliberately NOT seeded. The SDK owns session semantics along with
    * landing page and UTM attribution, and a hand-built session record risks

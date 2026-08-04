@@ -9,11 +9,11 @@
  * mirrors it rewrites from `identity` on init — verified on a live storefront:
  * seeding the mirrors is ignored, seeding `identity` is adopted verbatim.
  *
- * Reading a mirror instead of `identity` was the original bug. Measured cold:
- * `identity` is there at 171ms, the mirrors at 1967ms, and the pixel's first event
- * goes at ~2100ms — so the mirror read had ~130ms of margin and lost often enough
- * to split visitors. Adopting is the normal path; seeding is the fallback for when
- * no SDK is present at all.
+ * Adopting is the path that matters. **Seeding only holds on a shop with no Iris
+ * theme embed at all** — where the SDK is present, it stages its own id in memory
+ * before the pixel gets here and its debounced flush overwrites the seed ~1s later.
+ * See the timeline in index.ts. Seeding is kept because it is correct for the
+ * no-SDK case and harmless otherwise, not because it wins the cold race.
  */
 export type IrisIdentity = {
   distinctId?: string;
